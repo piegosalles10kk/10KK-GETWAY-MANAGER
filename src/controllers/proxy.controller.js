@@ -51,12 +51,13 @@ const setupGatewayRoutes = async ({ PORT_CHECK_HOST }) => {
                 changeOrigin: true, 
 
                 // CRÍTICO: Remove o prefixo do proxy antes de enviar ao serviço.
+                // Isso garante que o backend receba o path que espera.
                 // Ex: /service/backoffice/style.css -> /style.css
                 pathRewrite: {
                     [`^${route_path}`]: '', 
                 },
                 
-                // NOVO: Adicione 'ws: true' se algum serviço usar WebSockets
+                // Adicione 'ws: true' se algum serviço usar WebSockets
                 ws: true,
                 
                 onProxyReq: (proxyReq, req, res) => {
@@ -64,7 +65,7 @@ const setupGatewayRoutes = async ({ PORT_CHECK_HOST }) => {
                 },
             };
 
-            // dynamicRouter.use(route_path, ...) garante que TODAS as sub-rotas sejam tratadas
+            // dynamicRouter.use(route_path, ...) garante que TODAS as sub-rotas (HTML, CSS, JS) sejam tratadas
             dynamicRouter.use(route_path, createProxyMiddleware(proxyOptions));
             console.log(`[✅ ATIVO] Rota configurada: ${route_path} -> ${target_url}`);
         })); 
