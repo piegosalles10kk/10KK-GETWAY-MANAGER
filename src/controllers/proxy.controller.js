@@ -3,19 +3,39 @@ const express = require('express');
 const { createProxyMiddleware } = require('http-proxy-middleware');
 const portscanner = require('portscanner');
 const Route = require('../models/Route'); 
-const zlib = require('zlib'); // Importa o módulo nativo zlib
+const zlib = require('zlib'); // Módulo nativo do Node.js
 const dynamicRouter = express.Router();
 let activeRoutesCache = [];
 
-// Função de Ajuda: Injeta a tag <base href="..."> no HTML
-const injectBaseTag = (htmlContent, route_path) => {
-    // Garante que o caminho termine em barra, ex: /service/minharota/
+// Função de Ajuda: Lida com a substituição de URLs no corpo HTML
+const processHtmlForProxy = (htmlContent, route_path) => {
+    // 1. Garante o prefixo com a barra final: /service/minharota/
     const basePath = route_path.endsWith('/') ? route_path : route_path + '/';
-    const baseTag = `<base href="${basePath}">`;
     
-    // Injeta a tag <base> logo após a tag <head> de abertura (regex case-insensitive)
-    return htmlContent.replace(/<head>/i, `<head>${baseTag}`);
+    let modifiedHtml = htmlContent;
+
+    // --- 2. Injeção da Tag <base> (Suporte a Navegação SPA) ---
+    const baseTag = `<base href="${basePath}">`;
+    modifiedHtml = modifiedHtml.replace(/<head>/i, `<head>${baseTag}`);
+
+    // --- 3. Substituição Agressiva de Assets (CSS/JS/Imagens) ---
+    // Encontra: (href|src|action)=" /
+    // Substitui por: $1="${basePath}
+    // Isso cobre tags HTML padrão que usam URLs absolutas: <link href="/css...">
+    const assetRegex = /(href|src|action)=["']\//gi; 
+    modifiedHtml = modifiedHtml.replace(assetRegex, `$1="${basePath}`);
+
+    // --- 4. Substituição Ultra-Agressiva (Qualquer URL Absoluta no HTML/JS Inline) ---
+    // Encontra: " / (Aspas duplas, seguidas de espaço e barra) ou "/ (Aspas duplas, seguidas de barra)
+    // E substitui por: " /service/minharota/
+    // A ideia é capturar URLs geradas por JavaScript dentro de strings.
+    // É perigoso, mas necessário para alta compatibilidade.
+    const genericUrlRegex = /(['"])\/([^\/])/g; 
+    modifiedHtml = modifiedHtml.replace(genericUrlRegex, `$1${basePath}$2`);
+
+    return modifiedHtml;
 };
+
 
 /**
  * Função principal para buscar, verificar a saúde e configurar as rotas.
@@ -61,50 +81,45 @@ const setupGatewayRoutes = async ({ PORT_CHECK_HOST }) => {
                     const contentType = proxyRes.headers['content-type'];
                     const contentEncoding = proxyRes.headers['content-encoding'];
                     
-                    // Somente processa HTML
+                    // Somente processa documentos HTML
                     if (contentType && contentType.includes('text/html')) {
-                        // CRÍTICO: Define o decodificador/codificador baseado no Content-Encoding
                         let decompressor;
                         if (contentEncoding === 'gzip') {
                             decompressor = zlib.createGunzip();
-                            delete proxyRes.headers['content-encoding']; // Remove o cabeçalho original
+                            delete proxyRes.headers['content-encoding']; 
                         } else if (contentEncoding === 'deflate') {
                             decompressor = zlib.createInflate();
                             delete proxyRes.headers['content-encoding'];
                         }
 
-                        // Se houver um decompressor, pipe a resposta através dele
                         if (decompressor) {
                             let buffer = [];
                             
-                            decompressor.on('data', (chunk) => {
-                                buffer.push(chunk);
-                            });
-
+                            decompressor.on('data', (chunk) => { buffer.push(chunk); });
                             decompressor.on('end', () => {
                                 try {
                                     const html = Buffer.concat(buffer).toString('utf8');
-                                    const modifiedHtml = injectBaseTag(html, route_path);
+                                    
+                                    // NOVO: REESCREVE O CORPO MANUALMENTE com todas as regras
+                                    const modifiedHtml = processHtmlForProxy(html, route_path);
 
-                                    // Retorna a resposta ao cliente sem compressão (mais simples)
                                     res.setHeader('content-length', Buffer.byteLength(modifiedHtml));
                                     res.end(modifiedHtml);
                                 } catch (e) {
                                     console.error("Erro ao processar GZIP/HTML:", e);
-                                    proxyRes.pipe(res); // Fallback para o original
+                                    proxyRes.pipe(res); 
                                 }
                             });
                             
-                            // Conecta o proxyRes (comprimido) ao decompressor
                             proxyRes.pipe(decompressor);
                         } else {
-                            // Se não houver compressão, usa a lógica simples
+                            // Se não houver compressão
                             let body = [];
                             proxyRes.on('data', (chunk) => { body.push(chunk); });
                             proxyRes.on('end', () => {
                                 try {
                                     const html = Buffer.concat(body).toString('utf8');
-                                    const modifiedHtml = injectBaseTag(html, route_path);
+                                    const modifiedHtml = processHtmlForProxy(html, route_path);
                                     res.setHeader('content-length', Buffer.byteLength(modifiedHtml));
                                     res.end(modifiedHtml);
                                 } catch (e) {
