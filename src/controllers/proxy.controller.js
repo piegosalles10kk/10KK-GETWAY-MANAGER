@@ -6,19 +6,26 @@ const Route = require('../models/Route');
 const dynamicRouter = express.Router();
 let activeRoutesCache = [];
 
+// Função de Ajuda: Injeta a tag <base href="..."> no HTML
+const injectBaseTag = (htmlContent, route_path) => {
+    // Garante que o caminho termine em barra, ex: /service/minharota/
+    const basePath = route_path.endsWith('/') ? route_path : route_path + '/';
+    const baseTag = `<base href="${basePath}">`;
+    
+    // Injeta a tag <base> logo após a tag <head> de abertura (regex case-insensitive)
+    return htmlContent.replace(/<head>/i, `<head>${baseTag}`);
+};
+
 /**
  * Função principal para buscar, verificar a saúde e configurar as rotas.
- * Recebe a configuração PORT_CHECK_HOST via argumento (geralmente do app.js).
  */
 const setupGatewayRoutes = async ({ PORT_CHECK_HOST }) => {
     
-    // Define o host padrão, usando o argumento passado ou o ENV, com '127.0.0.1' como fallback final.
     const hostToCheck = PORT_CHECK_HOST || process.env.PORT_CHECK_HOST || '127.0.0.1';
 
     try {
         const newRoutes = await Route.find({ is_active: true });
         
-        // Verifica se a lista de rotas mudou
         if (JSON.stringify(newRoutes) === JSON.stringify(activeRoutesCache)) {
             return; 
         }
@@ -26,17 +33,14 @@ const setupGatewayRoutes = async ({ PORT_CHECK_HOST }) => {
         console.log(`\n🔄 Recarregando rotas. Rotas ativas encontradas: ${newRoutes.length}.`);
         activeRoutesCache = newRoutes;
 
-        // Limpa o roteador para remover rotas antigas.
         dynamicRouter.stack = []; 
 
-        // Usa Promise.all para executar os health checks em paralelo.
         await Promise.all(newRoutes.map(async (route) => {
             const { route_path, target_url, check_port } = route;
 
-            // --- 1. Verificação de Porta (Health Check) ---
+            // --- 1. Verificação de Porta ---
             let is_service_running = true;
             if (check_port) {
-                // Usa 'hostToCheck' para o portscanner (Ex: vps-host:80)
                 const status = await portscanner.checkPortStatus(check_port, hostToCheck); 
                 is_service_running = status === 'open';
             }
@@ -49,23 +53,55 @@ const setupGatewayRoutes = async ({ PORT_CHECK_HOST }) => {
             // --- 2. Configuração e Aplicação do Middleware de Proxy ---
             const proxyOptions = {
                 target: target_url,
-                // Mantém o Host correto no cabeçalho.
-                changeOrigin: true, 
+                changeOrigin: true, // Mantém a correção de Host Header
                 
-                // CRÍTICO: REMOVEMOS A OPÇÃO 'pathRewrite'.
-                // O Proxy agora envia o caminho COMPLETO: /service/minharota/static/css/main.css
-                // O serviço de destino (porta 80/2100) deve ser capaz de ignorar o prefixo /service/minharota
-                // OU a base do seu projeto Frontend deve ser configurada para ser relativa (./).
+                // CRÍTICA: Intercepta a resposta para injetar a tag base no HTML
+                onProxyRes: (proxyRes, req, res) => {
+                    const contentType = proxyRes.headers['content-type'];
+                    
+                    // Somente processa documentos HTML
+                    if (contentType && contentType.includes('text/html')) {
+                        // 1. Remove o cabeçalho de compressão (se existir) para ler o corpo como string
+                        delete proxyRes.headers['content-encoding']; 
+                        
+                        let body = [];
+                        
+                        // 2. Coleta o corpo da resposta em chunks
+                        proxyRes.on('data', (chunk) => {
+                            body.push(chunk);
+                        });
+
+                        // 3. Processa e envia a resposta modificada
+                        proxyRes.on('end', () => {
+                            try {
+                                const buffer = Buffer.concat(body);
+                                let html = buffer.toString('utf8');
+                                
+                                // INJEÇÃO: Adiciona a tag <base href="...">
+                                html = injectBaseTag(html, route_path);
+
+                                // Garante que o novo tamanho do corpo seja definido
+                                res.setHeader('content-length', Buffer.byteLength(html));
+                                res.end(html);
+                            } catch (e) {
+                                console.error("Erro ao processar HTML para injeção de base:", e);
+                                res.end(Buffer.concat(body)); // Envia o original em caso de erro
+                            }
+                        });
+                    } else {
+                        // Para outros tipos de conteúdo (CSS, JS, imagens), enviamos o original
+                        proxyRes.pipe(res);
+                    }
+                },
                 
                 onProxyReq: (proxyReq, req, res) => {
                     console.log(`[PROXY] Redirecionando ${req.method} ${req.originalUrl} para ${target_url}`);
                 },
             };
 
-            // Aplica o middleware de proxy no roteador dinâmico.
             dynamicRouter.use(route_path, createProxyMiddleware(proxyOptions));
             console.log(`[✅ ATIVO] Rota configurada: ${route_path} -> ${target_url}`);
-        })); // Fim do Promise.all
+        })); 
 
     } catch (error) {
         console.error("Erro ao carregar e configurar as rotas do Gateway:", error);
