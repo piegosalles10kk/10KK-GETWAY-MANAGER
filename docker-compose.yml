@@ -5,9 +5,9 @@ services:
   gateway:
     build: .
     container_name: api-gateway-manager
-    # NOVO MAPEAMENTO DE PORTA: Host 1310 -> Container 8080
+    # NOVO MAPEAMENTO DE PORTA: Host 8000 -> Container 8000
     ports:
-      - "1310:8080"
+      - "8000:8000"
     restart: always
     environment:
       # O hostname do MongoDB é o nome do serviço (mongo-db)
@@ -22,7 +22,7 @@ services:
   mongo-db:
     image: mongo:4.4
     container_name: mongodb
-    # Mapeia a porta padrão do MongoDB (opcional, para acesso com ferramentas externas)
+    # Mapeia a porta padrão do MongoDB (opcional)
     ports:
       - "27017:27017"
     # Mapeia um volume para persistir os dados do banco
