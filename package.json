@@ -1,22 +1,25 @@
 {
   "name": "proxy-dashboard",
   "version": "1.0.0",
-  "description": "",
+  "description": "API Gateway Manager com Dashboard Web",
   "license": "ISC",
   "author": "piego",
   "type": "commonjs",
   "main": "app.js",
   "scripts": {
-    "test": "test",
-    "start": "node app.js"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node app.js",
+    "dev": "nodemon app.js"
   },
   "dependencies": {
-    "bcryptjs": "^3.0.2",
-    "connect-inject": "^0.4.0",
-    "dotenv": "^17.2.2",
-    "express": "^5.1.0",
-    "http-proxy-middleware": "^3.0.5",
-    "mongoose": "^8.18.2",
+    "bcryptjs": "^2.4.3",
+    "dotenv": "^16.0.3",
+    "express": "^4.18.2",
+    "http-proxy-middleware": "^2.0.6",
+    "mongoose": "^7.0.3",
     "portscanner": "^2.2.0"
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.22"
   }
 }
