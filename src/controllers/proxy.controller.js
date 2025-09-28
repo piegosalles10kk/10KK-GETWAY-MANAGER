@@ -92,29 +92,46 @@ const setupGatewayRoutes = async ({ PORT_CHECK_HOST }) => {
                         
                         res.statusCode = proxyRes.statusCode;
 
-                        // APENAS modifica HTML da rota principal, não assets
-                        const isMainHtmlRoute = (
-                            contentType.includes('text/html') && 
-                            (url === '/' || url === '' || !url.includes('.'))
+                        // Detecta se é HTML (tanto para apps tradicionais quanto React)
+                        const isHtmlContent = (
+                            contentType.includes('text/html') || 
+                            (proxyRes.statusCode === 200 && 
+                             !url.includes('.') && 
+                             body.toString().includes('<!DOCTYPE html'))
                         );
 
-                        if (isMainHtmlRoute) {
+                        if (isHtmlContent) {
                             let htmlContent = body.toString();
                             
-                            // Calcula o basePath correto - sempre com barra no final
+                            // Calcula o basePath correto
                             const basePath = route_path.endsWith('/') ? route_path : route_path + '/';
                             const baseTag = `<base href="${basePath}">`;
                             
-                            console.log(`[HTML INJECT] 🎯 Injetando base href="${basePath}" em ${req.originalUrl}`);
+                            console.log(`[HTML INJECT] 🎯 Processando HTML em ${req.originalUrl}`);
                             
-                            // Injeta a tag base logo após <head>
+                            // Para aplicações React, também precisamos ajustar o publicPath
+                            const isReactApp = htmlContent.includes('react') || 
+                                             htmlContent.includes('__webpack_require__') ||
+                                             htmlContent.includes('bundle.js') ||
+                                             htmlContent.includes('manifest.json');
+                            
+                            if (isReactApp) {
+                                console.log(`[REACT] 📱 Detectada aplicação React em ${req.originalUrl}`);
+                                
+                                // Para React, ajusta URLs absolutos que começam com /
+                                htmlContent = htmlContent.replace(
+                                    /(\s)(href|src)=["']\/(?!\/)/g,
+                                    `$1$2="${basePath}`
+                                );
+                            }
+                            
+                            // Injeta a tag base
                             if (htmlContent.includes('<head>')) {
                                 htmlContent = htmlContent.replace(
                                     /<head>/i, 
                                     `<head>\n    ${baseTag}`
                                 );
                             } else if (htmlContent.includes('<html>')) {
-                                // Se não tem <head>, cria um
                                 htmlContent = htmlContent.replace(
                                     /<html([^>]*)>/i,
                                     `<html$1>\n<head>\n    ${baseTag}\n</head>`
@@ -128,18 +145,22 @@ const setupGatewayRoutes = async ({ PORT_CHECK_HOST }) => {
                             res.end(buffer);
                             
                         } else {
-                            // Para TODOS os outros arquivos (CSS, JS, imagens, etc), passa direto
+                            // Para TODOS os outros arquivos (CSS, JS, imagens, JSON, etc)
                             console.log(`[ASSET] 📄 Servindo ${req.originalUrl} (${contentType || 'unknown'}) - ${body.length} bytes`);
                             
                             if (body.length > 0) {
                                 res.setHeader('Content-Length', body.length);
                             }
                             
-                            // Adiciona headers específicos para assets
+                            // Headers específicos para diferentes tipos de assets
                             if (contentType.includes('text/css')) {
                                 res.setHeader('Content-Type', 'text/css; charset=utf-8');
                             } else if (contentType.includes('javascript') || url.endsWith('.js')) {
                                 res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+                            } else if (contentType.includes('application/json') || url.endsWith('.json')) {
+                                res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                            } else if (url.includes('manifest.json')) {
+                                res.setHeader('Content-Type', 'application/json; charset=utf-8');
                             }
                             
                             res.end(body);
