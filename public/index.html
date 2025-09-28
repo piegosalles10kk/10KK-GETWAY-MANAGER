@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Gateway Manager</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <script src="script.js" defer></script>
+</head>
+<body>
+
+    <header class="main-header">
+        <div class="container">
+            <div class="logo">
+                <i class="fas fa-route"></i> 10KK Gateway Manager
+            </div>
+            <div class="auth-controls">
+                <div class="theme-switch-wrapper">
+                    <label class="theme-switch" for="checkbox">
+                        <input type="checkbox" id="checkbox" />
+                        <div class="slider round">
+                            <span class="icon-light"><i class="fas fa-sun"></i></span>
+                            <span class="icon-dark"><i class="fas fa-moon"></i></span>
+                        </div>
+                    </label>
+                </div>
+                <button id="logout-button" class="action-btn logout-btn">Sair</button>
+            </div>
+        </div>
+    </header>
+
+    <div id="login-view" class="hidden">
+        <div class="login-box">
+            <h2>Acesso ao Dashboard</h2>
+            <form id="login-form">
+                <input type="text" id="username" placeholder="Usuário" required>
+                <input type="password" id="password" placeholder="Senha" required>
+                <button type="submit" class="action-btn primary-btn">Entrar</button>
+            </form>
+            <p id="login-message"></p>
+        </div>
+    </div>
+
+    <div id="dashboard-view" class="hidden">
+        
+        <div class="container main-content-area">
+            
+            <section id="dashboard-tab">
+                
+                <h2>Visão Geral do Serviço</h2>
+                <div class="cards-grid">
+                    <div class="card status-card">
+                        <i class="fas fa-plug card-icon blue"></i>
+                        <p>Portas em Uso (Ativas)</p>
+                        <h3 id="used-ports">0</h3>
+                    </div>
+                    <div class="card status-card">
+                        <i class="fas fa-search card-icon orange"></i>
+                        <p>Portas Disponíveis (Descoberta)</p>
+                        <h3 id="available-ports">0</h3>
+                    </div>
+                    <div class="card status-card">
+                        <i class="fas fa-list-ul card-icon purple"></i>
+                        <p>Total de Rotas Cadastradas</p>
+                        <h3 id="total-routes">0</h3>
+                    </div>
+                </div>
+
+                <h2 style="margin-top: 40px;">Controle de Rotas (CRUD)</h2>
+                
+                <form id="route-form" class="dynamic-form">
+                    </form>
+
+                <h2 style="margin-top: 40px;">Rotas Cadastradas</h2>
+                
+                <div class="search-container">
+                    <i class="fas fa-search search-icon"></i>
+                    <input type="text" id="route-search" placeholder="Buscar por Nome, Caminho, Destino ou Porta..." class="search-input">
+                </div>
+                <div class="table-responsive">
+                    <table class="route-table">
+                        <thead>
+                            <tr>
+                                <th>STATUS</th>
+                                <th>NOME DA ROTA</th> 
+                                <th>CAMINHO (PROXY)</th> 
+                                <th>DESTINO</th>
+                                <th>PORTA CHECK</th>
+                                <th>AÇÕES</th>
+                            </tr>
+                        </thead>
+                        <tbody id="route-table-body">
+                            </tbody>
+                    </table>
+                </div>
+
+            </section>
+            
+        </div>
+    </div>
+
+    <div id="custom-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <div id="modal-icon" class="modal-icon">
+                </div>
+            <h3 id="modal-title">Título</h3>
+            <p id="modal-message">Mensagem detalhada aqui.</p>
+            <button id="modal-close-btn" class="action-btn primary-btn">Fechar</button>
+        </div>
+    </div>
+    </body>
+</html>

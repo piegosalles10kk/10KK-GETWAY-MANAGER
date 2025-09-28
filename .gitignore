@@ -1,0 +1,68 @@
+# ----------------------------------------------------------------------
+# DEPENDÊNCIAS
+# ----------------------------------------------------------------------
+/node_modules
+/npm-debug.log
+/yarn-error.log
+
+# Opcional: Arquivos de cache do npm ou yarn se estiverem sendo gerados
+.npm
+.yarn-cache
+
+# ----------------------------------------------------------------------
+# CONFIGURAÇÕES E VARIÁVEIS DE AMBIENTE CONFIDENCIAIS
+# ----------------------------------------------------------------------
+# Arquivos que contêm segredos, tokens ou chaves de API.
+# Se você usa um arquivo .env para variáveis locais, ignore-o.
+.env
+.env.local
+.env.*.local
+
+# Se você estiver gerando um arquivo de configuração temporário, ignore-o:
+config.json.local
+# *.pem  # Se usar certificados SSL ou chaves PEM em desenvolvimento
+
+# ----------------------------------------------------------------------
+# BUILD E OUTPUT
+# ----------------------------------------------------------------------
+# Diretórios de build ou de saída do projeto, se houver:
+/dist
+/build
+/output
+
+# ----------------------------------------------------------------------
+# DOCKER E CONTEINERIZAÇÃO
+# ----------------------------------------------------------------------
+# Ignora volumes mapeados do Docker para persistência de dados (MongoDB)
+# Se você tiver um volume 'mongo-data' no seu diretório local, ignore-o.
+/mongo-data
+# Arquivos de log do Docker
+docker-compose.log
+
+# ----------------------------------------------------------------------
+# LOGS E TEMPORÁRIOS
+# ----------------------------------------------------------------------
+# Logs de aplicação ou de sistema
+*.log
+npm-debug.log*
+.eslintcache
+
+# Arquivos temporários e de travamento (crash)
+*.tmp
+*.bak
+/temp
+
+# ----------------------------------------------------------------------
+# SISTEMAS OPERACIONAIS E FERRAMENTAS
+# ----------------------------------------------------------------------
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+
+# VS Code
+.vscode/
+
+# IDEs como WebStorm/IntelliJ
+.idea/

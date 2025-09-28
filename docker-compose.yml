@@ -1,0 +1,34 @@
+version: '3.8'
+
+services:
+  # --- 1. API GATEWAY MANAGER (Seu Serviço Principal) ---
+  gateway:
+    build: .
+    container_name: api-gateway-manager
+    # NOVO MAPEAMENTO DE PORTA: Host 1310 -> Container 8080
+    ports:
+      - "1310:8080"
+    restart: always
+    environment:
+      # O hostname do MongoDB é o nome do serviço (mongo-db)
+      MONGO_URI: mongodb://mongo-db:27017/api-gateway-db
+      JWT_SECRET: PieGoCAmiSa10
+      ADMIN_USERNAME: admin
+      ADMIN_PASSWORD: password123
+    depends_on:
+      - mongo-db
+      
+  # --- 2. MONGODB DATABASE ---
+  mongo-db:
+    image: mongo:4.4
+    container_name: mongodb
+    # Mapeia a porta padrão do MongoDB (opcional, para acesso com ferramentas externas)
+    ports:
+      - "27017:27017"
+    # Mapeia um volume para persistir os dados do banco
+    volumes:
+      - mongo-data:/data/db
+
+# Definição do volume para persistência de dados
+volumes:
+  mongo-data:
