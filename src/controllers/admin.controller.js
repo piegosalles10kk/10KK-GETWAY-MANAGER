@@ -4,7 +4,6 @@ const portscanner = require('portscanner');
 const { setupGatewayRoutes } = require('./proxy.controller'); 
 
 // --- Configuração Centralizada do Host ---
-// Garante que o HOST seja pego da variável de ambiente, com fallback para localhost (127.0.0.1 é preferível)
 const getHostAddress = () => process.env.PORT_CHECK_HOST || '127.0.0.1';
 
 
@@ -15,19 +14,28 @@ const generateRandomPath = (length = 8) => {
 };
 
 /**
- * Gera um array de portas de 1 até o limite especificado.
- * O limite de 5000 é usado para cobrir a maioria dos serviços comuns e personalizados.
+ * Gera um array de portas de 1 a 5000 e adiciona portas específicas.
+ * A porta 8000 (Gateway) e 27017 (MongoDB) são excluídas da lista de escaneamento.
  */
 const generatePortScanRange = (limit = 5000) => {
     const ports = [];
-    // Começamos em 1, pois portas muito baixas (ex: 1 a 10) são raras para aplicações
-    // mas incluídas para cobrir a faixa de 5000
+    const PORTS_TO_EXCLUDE = [8000, 27017];
+    const ADDITIONAL_PORTS = [19768]; // Sua porta do aaPanel
+
+    // 1. Gera o range de 1 a 5000
     for (let i = 1; i <= limit; i++) { 
-        // Excluímos portas conhecidas do Gateway/DB para evitar listar a si mesmo
-        if (i !== 8000 && i !== 27017) {
+        if (!PORTS_TO_EXCLUDE.includes(i)) {
             ports.push(i);
         }
     }
+
+    // 2. Adiciona portas específicas que estão fora do range (ex: 19768)
+    ADDITIONAL_PORTS.forEach(port => {
+        if (!ports.includes(port) && !PORTS_TO_EXCLUDE.includes(port)) {
+            ports.push(port);
+        }
+    });
+
     return ports;
 };
 
@@ -41,11 +49,10 @@ const checkRouteHealth = async (routes) => {
         
         if (route.is_active && route.check_port) {
             try {
-                // Checa a porta no Host usando o endereço correto (vps-host ou 127.0.0.1)
+                // Checa a porta no Host usando o endereço correto
                 const status = await portscanner.checkPortStatus(route.check_port, HOST);
                 isHealthy = (status === 'open');
             } catch (e) {
-                // Em caso de erro de conexão, assume-se que está offline
                 isHealthy = false; 
             }
         }
@@ -64,25 +71,22 @@ const checkRouteHealth = async (routes) => {
 // --- CRUD DE ROTAS: Descoberta de Portas (Alterado) ---
 const discoverAvailablePorts = async (req, res) => {
     try {
-        // NOVO: Escaneia todas as portas de 1 a 5000
+        // NOVO: Escaneia portas de 1 a 5000 + a porta 19768
         const ALL_PORTS_TO_CHECK = generatePortScanRange(5000); 
         const HOST = getHostAddress();
         
         const registeredRoutes = await Route.find().select('check_port');
-        // Converte para Number para garantir comparação correta
         const registeredPorts = registeredRoutes.map(r => Number(r.check_port)); 
         
         const availableActivePorts = [];
 
-        // Esta iteração fará o Health Check em 5000 portas. 
-        // O desempenho dependerá da biblioteca portscanner.
+        // Inicia o escaneamento sequencial das 5000+ portas
         for (const port of ALL_PORTS_TO_CHECK) {
-            // Verifica se a porta já está registrada antes de escanear
+            
             if (registeredPorts.includes(port)) {
                 continue; 
             }
             
-            // O escaneamento da porta é feito no Host (vps-host)
             const status = await portscanner.checkPortStatus(port, HOST);
             
             if (status === 'open') {
@@ -111,7 +115,7 @@ const createRoute = async (req, res) => {
         
         const newRoutePath = generateRandomPath();
         
-        // CORREÇÃO: Usa o endereço HOST real (vps-host ou 127.0.0.1)
+        // CORREÇÃO: Usa o endereço HOST real (vps-host)
         const newTargetUrl = `http://${getHostAddress()}:${check_port}`;
         
         // Checagem de Conflito de Nome
