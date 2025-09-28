@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  # --- 1. API GATEWAY MANAGER (Seu Serviço Principal) ---
+  gateway:
+    build: .
+    container_name: api-gateway-manager
+    # Mapeamento: Host 8000 (Seu VPS) -> Container 8000 (Seu app.js)
+    ports:
+      - "8000:8000"
+    restart: always
+    environment:
+      # Conexão com MongoDB (usa o nome do serviço 'mongo-db')
+      MONGO_URI: mongodb://mongo-db:27017/api-gateway-db
+      JWT_SECRET: PieGoCAmiSa10
+      ADMIN_USERNAME: admin
+      ADMIN_PASSWORD: password123
+      # CORREÇÃO VPS/LINUX: 172.17.0.1 é o endereço fixo do HOST (sua VPS) na rede Docker Bridge.
+      # Isso garante que a Descoberta de Serviços no seu app.js funcione.
+      PORT_CHECK_HOST: 172.17.0.1 
+    depends_on:
+      - mongo-db
+      
+  # --- 2. MONGODB DATABASE ---
+  mongo-db:
+    image: mongo:4.4
+    container_name: mongodb
+    # Opcional: Para acessar o DB externamente (com ferramentas como o Compass)
+    ports:
+      - "27017:27017"
+    # Mapeia um volume para persistir os dados do banco
+    volumes:
+      - mongo-data:/data/db
+
+# Definição do volume para persistência de dados
+volumes:
+  mongo-data:
