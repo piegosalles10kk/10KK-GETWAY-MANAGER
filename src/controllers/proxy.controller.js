@@ -13,6 +13,7 @@ let activeRoutesCache = [];
 const setupGatewayRoutes = async ({ PORT_CHECK_HOST }) => {
     
     // Define o host padrão, usando o argumento passado ou o ENV, com '127.0.0.1' como fallback final.
+    // Este host será 'vps-host' dentro do Docker.
     const hostToCheck = PORT_CHECK_HOST || process.env.PORT_CHECK_HOST || '127.0.0.1';
 
     try {
@@ -36,7 +37,7 @@ const setupGatewayRoutes = async ({ PORT_CHECK_HOST }) => {
             // --- 1. Verificação de Porta (Health Check) ---
             let is_service_running = true;
             if (check_port) {
-                // CORREÇÃO: Usa 'hostToCheck' para o portscanner
+                // CORREÇÃO: Usa 'hostToCheck' para o portscanner (Ex: vps-host:80)
                 const status = await portscanner.checkPortStatus(check_port, hostToCheck); 
                 is_service_running = status === 'open';
             }
@@ -49,6 +50,7 @@ const setupGatewayRoutes = async ({ PORT_CHECK_HOST }) => {
             // --- 2. Configuração e Aplicação do Middleware de Proxy ---
             const proxyOptions = {
                 target: target_url,
+                // CORREÇÃO CRÍTICA: Resolve o problema de CSS/JS (código "zoado")
                 changeOrigin: true, 
                 // reescreve o caminho: ex: /service/chave/produtos -> /produtos no backend
                 pathRewrite: {
