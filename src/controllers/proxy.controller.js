@@ -13,7 +13,6 @@ let activeRoutesCache = [];
 const setupGatewayRoutes = async ({ PORT_CHECK_HOST }) => {
     
     // Define o host padrão, usando o argumento passado ou o ENV, com '127.0.0.1' como fallback final.
-    // Este host será 'vps-host' dentro do Docker.
     const hostToCheck = PORT_CHECK_HOST || process.env.PORT_CHECK_HOST || '127.0.0.1';
 
     try {
@@ -30,14 +29,14 @@ const setupGatewayRoutes = async ({ PORT_CHECK_HOST }) => {
         // Limpa o roteador para remover rotas antigas.
         dynamicRouter.stack = []; 
 
-        // Usa Promise.all para executar os health checks em paralelo, melhorando a performance.
+        // Usa Promise.all para executar os health checks em paralelo.
         await Promise.all(newRoutes.map(async (route) => {
             const { route_path, target_url, check_port } = route;
 
             // --- 1. Verificação de Porta (Health Check) ---
             let is_service_running = true;
             if (check_port) {
-                // CORREÇÃO: Usa 'hostToCheck' para o portscanner (Ex: vps-host:80)
+                // Usa 'hostToCheck' para o portscanner (Ex: vps-host:80)
                 const status = await portscanner.checkPortStatus(check_port, hostToCheck); 
                 is_service_running = status === 'open';
             }
@@ -50,12 +49,14 @@ const setupGatewayRoutes = async ({ PORT_CHECK_HOST }) => {
             // --- 2. Configuração e Aplicação do Middleware de Proxy ---
             const proxyOptions = {
                 target: target_url,
-                // CORREÇÃO CRÍTICA: Resolve o problema de CSS/JS (código "zoado")
+                // Mantém o Host correto no cabeçalho.
                 changeOrigin: true, 
-                // reescreve o caminho: ex: /service/chave/produtos -> /produtos no backend
-                pathRewrite: {
-                    [`^${route_path}`]: '/', 
-                },
+                
+                // CRÍTICO: REMOVEMOS A OPÇÃO 'pathRewrite'.
+                // O Proxy agora envia o caminho COMPLETO: /service/minharota/static/css/main.css
+                // O serviço de destino (porta 80/2100) deve ser capaz de ignorar o prefixo /service/minharota
+                // OU a base do seu projeto Frontend deve ser configurada para ser relativa (./).
+                
                 onProxyReq: (proxyReq, req, res) => {
                     console.log(`[PROXY] Redirecionando ${req.method} ${req.originalUrl} para ${target_url}`);
                 },
