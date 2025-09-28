@@ -3,6 +3,7 @@ const express = require('express');
 const { createProxyMiddleware } = require('http-proxy-middleware');
 const portscanner = require('portscanner');
 const Route = require('../models/Route'); 
+const zlib = require('zlib'); // Importa o módulo nativo zlib
 const dynamicRouter = express.Router();
 let activeRoutesCache = [];
 
@@ -55,41 +56,65 @@ const setupGatewayRoutes = async ({ PORT_CHECK_HOST }) => {
                 target: target_url,
                 changeOrigin: true, // Mantém a correção de Host Header
                 
-                // CRÍTICA: Intercepta a resposta para injetar a tag base no HTML
+                // CRÍTICA: Intercepta a resposta para INJETAR a tag base e lidar com GZIP
                 onProxyRes: (proxyRes, req, res) => {
                     const contentType = proxyRes.headers['content-type'];
+                    const contentEncoding = proxyRes.headers['content-encoding'];
                     
-                    // Somente processa documentos HTML
+                    // Somente processa HTML
                     if (contentType && contentType.includes('text/html')) {
-                        // 1. Remove o cabeçalho de compressão (se existir) para ler o corpo como string
-                        delete proxyRes.headers['content-encoding']; 
-                        
-                        let body = [];
-                        
-                        // 2. Coleta o corpo da resposta em chunks
-                        proxyRes.on('data', (chunk) => {
-                            body.push(chunk);
-                        });
+                        // CRÍTICO: Define o decodificador/codificador baseado no Content-Encoding
+                        let decompressor;
+                        if (contentEncoding === 'gzip') {
+                            decompressor = zlib.createGunzip();
+                            delete proxyRes.headers['content-encoding']; // Remove o cabeçalho original
+                        } else if (contentEncoding === 'deflate') {
+                            decompressor = zlib.createInflate();
+                            delete proxyRes.headers['content-encoding'];
+                        }
 
-                        // 3. Processa e envia a resposta modificada
-                        proxyRes.on('end', () => {
-                            try {
-                                const buffer = Buffer.concat(body);
-                                let html = buffer.toString('utf8');
-                                
-                                // INJEÇÃO: Adiciona a tag <base href="...">
-                                html = injectBaseTag(html, route_path);
+                        // Se houver um decompressor, pipe a resposta através dele
+                        if (decompressor) {
+                            let buffer = [];
+                            
+                            decompressor.on('data', (chunk) => {
+                                buffer.push(chunk);
+                            });
 
-                                // Garante que o novo tamanho do corpo seja definido
-                                res.setHeader('content-length', Buffer.byteLength(html));
-                                res.end(html);
-                            } catch (e) {
-                                console.error("Erro ao processar HTML para injeção de base:", e);
-                                res.end(Buffer.concat(body)); // Envia o original em caso de erro
-                            }
-                        });
+                            decompressor.on('end', () => {
+                                try {
+                                    const html = Buffer.concat(buffer).toString('utf8');
+                                    const modifiedHtml = injectBaseTag(html, route_path);
+
+                                    // Retorna a resposta ao cliente sem compressão (mais simples)
+                                    res.setHeader('content-length', Buffer.byteLength(modifiedHtml));
+                                    res.end(modifiedHtml);
+                                } catch (e) {
+                                    console.error("Erro ao processar GZIP/HTML:", e);
+                                    proxyRes.pipe(res); // Fallback para o original
+                                }
+                            });
+                            
+                            // Conecta o proxyRes (comprimido) ao decompressor
+                            proxyRes.pipe(decompressor);
+                        } else {
+                            // Se não houver compressão, usa a lógica simples
+                            let body = [];
+                            proxyRes.on('data', (chunk) => { body.push(chunk); });
+                            proxyRes.on('end', () => {
+                                try {
+                                    const html = Buffer.concat(body).toString('utf8');
+                                    const modifiedHtml = injectBaseTag(html, route_path);
+                                    res.setHeader('content-length', Buffer.byteLength(modifiedHtml));
+                                    res.end(modifiedHtml);
+                                } catch (e) {
+                                    console.error("Erro ao processar HTML simples:", e);
+                                    res.end(Buffer.concat(body));
+                                }
+                            });
+                        }
                     } else {
-                        // Para outros tipos de conteúdo (CSS, JS, imagens), enviamos o original
+                        // Para CSS, JS, e outros, pipe a resposta original
                         proxyRes.pipe(res);
                     }
                 },
