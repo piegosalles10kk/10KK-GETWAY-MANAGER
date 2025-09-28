@@ -3,12 +3,9 @@ const express = require('express');
 const { createProxyMiddleware } = require('http-proxy-middleware');
 const portscanner = require('portscanner');
 const Route = require('../models/Route'); 
-// 🚨 Importa o pacote necessário para injeção segura de HTML
-const injector = require('connect-inject'); 
 
 const dynamicRouter = express.Router();
 let activeRoutesCache = [];
-
 
 /**
  * Função principal para buscar, verificar a saúde e configurar as rotas.
@@ -47,30 +44,15 @@ const setupGatewayRoutes = async ({ PORT_CHECK_HOST }) => {
                 return; 
             }
             
-            // --- 2. Configuração e Aplicação do Middleware de Proxy ---
+            // --- 2. Configuração do Middleware de Proxy ---
             
-            // 🚨 CRÍTICO: Configura o injetor para a rota atual
-            // A tag <base> forçará o navegador a usar o prefixo do proxy (/service/backoffice/)
-            const basePath = route_path.endsWith('/') ? route_path : route_path + '/';
-            const baseTag = `<base href="${basePath}">`;
-
-            // Cria uma instância do injetor de conteúdo
-            const injectMiddleware = injector({
-                // O conteúdo que será injetado
-                snippet: baseTag,
-                // Onde o conteúdo será injetado (logo após <head>)
-                head: true, 
-                // Permite o processamento de respostas já comprimidas (GZIP/Deflate)
-                disable: false 
-            });
-
             const proxyOptions = {
                 target: target_url,
                 
-                // Corrige o cabeçalho Host.
+                // Corrige o cabeçalho Host
                 changeOrigin: true, 
 
-                // Remove o prefixo do proxy antes de enviar ao serviço.
+                // Remove o prefixo do proxy antes de enviar ao serviço
                 // Ex: /service/backoffice/style.css -> /style.css
                 pathRewrite: {
                     [`^${route_path}`]: '', 
@@ -79,24 +61,83 @@ const setupGatewayRoutes = async ({ PORT_CHECK_HOST }) => {
                 // WebSockets
                 ws: true,
                 
-                // 🚨 CRÍTICO: Intercepta a resposta para INJETAR a tag base
+                // Headers customizados
+                headers: {
+                    'X-Forwarded-Proto': 'http',
+                    'X-Forwarded-Host': 'localhost',
+                },
+
+                // Intercepta a resposta para modificar conteúdo HTML
+                selfHandleResponse: true,
+                
                 onProxyRes: (proxyRes, req, res) => {
-                    // Só injeta em documentos HTML
-                    if (proxyRes.headers['content-type'] && proxyRes.headers['content-type'].includes('text/html')) {
-                        // Passa o controle para o connect-inject, que lida com GZIP e injeção
-                        injectMiddleware(req, res, () => {}); 
-                    } else {
-                        // Para todos os outros assets (CSS, JS, imagens), apenas encaminha o stream
-                        proxyRes.pipe(res);
-                    }
+                    let body = Buffer.alloc(0);
+                    
+                    // Coleta todos os chunks da resposta
+                    proxyRes.on('data', (chunk) => {
+                        body = Buffer.concat([body, chunk]);
+                    });
+
+                    proxyRes.on('end', () => {
+                        const contentType = proxyRes.headers['content-type'] || '';
+                        
+                        // Copia os headers da resposta original
+                        Object.keys(proxyRes.headers).forEach(key => {
+                            res.setHeader(key, proxyRes.headers[key]);
+                        });
+                        
+                        res.statusCode = proxyRes.statusCode;
+
+                        // Se for HTML, injeta a tag base para corrigir URLs relativos
+                        if (contentType.includes('text/html')) {
+                            let htmlContent = body.toString();
+                            
+                            // Calcula o basePath correto
+                            const basePath = route_path.endsWith('/') ? route_path : route_path + '/';
+                            const baseTag = `<base href="${basePath}">`;
+                            
+                            // Injeta a tag base logo após <head>
+                            if (htmlContent.includes('<head>')) {
+                                htmlContent = htmlContent.replace(
+                                    /<head>/i, 
+                                    `<head>\n    ${baseTag}`
+                                );
+                            } else if (htmlContent.includes('<html>')) {
+                                // Se não tem <head>, adiciona no início do HTML
+                                htmlContent = htmlContent.replace(
+                                    /<html([^>]*)>/i,
+                                    `<html$1>\n<head>\n    ${baseTag}\n</head>`
+                                );
+                            }
+                            
+                            // Atualiza o Content-Length
+                            res.setHeader('Content-Length', Buffer.byteLength(htmlContent));
+                            res.end(htmlContent);
+                        } else {
+                            // Para outros tipos de conteúdo (CSS, JS, imagens), envia sem modificação
+                            res.end(body);
+                        }
+                    });
                 },
                 
                 onProxyReq: (proxyReq, req, res) => {
                     console.log(`[PROXY] Redirecionando ${req.method} ${req.originalUrl} para ${target_url}`);
+                    
+                    // Remove headers problemáticos
+                    proxyReq.removeHeader('accept-encoding');
                 },
+
+                onError: (err, req, res) => {
+                    console.error(`[PROXY ERROR] Erro ao proxificar ${req.originalUrl}:`, err.message);
+                    res.status(502).json({
+                        error: 'Bad Gateway',
+                        message: 'Erro ao conectar com o serviço de destino',
+                        target: target_url
+                    });
+                }
             };
 
-            // dynamicRouter.use(route_path, ...) garante que TODAS as sub-rotas sejam tratadas
+            // Aplica o middleware de proxy na rota
             dynamicRouter.use(route_path, createProxyMiddleware(proxyOptions));
             console.log(`[✅ ATIVO] Rota configurada: ${route_path} -> ${target_url}`);
         })); 
@@ -110,12 +151,12 @@ const setupGatewayRoutes = async ({ PORT_CHECK_HOST }) => {
  * Handler de Fallback 404 (quando nenhuma rota do proxy corresponde).
  */
 const notFoundFallback = (req, res) => {
-    res.status(404).send({ 
+    res.status(404).json({ 
         error: "Route Not Found", 
-        message: "A rota solicitada não foi encontrada na API Gateway." 
+        message: "A rota solicitada não foi encontrada na API Gateway.",
+        requested_path: req.originalUrl
     });
 };
-
 
 module.exports = { 
     dynamicRouter, 
