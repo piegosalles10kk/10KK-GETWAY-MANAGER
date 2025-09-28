@@ -2,7 +2,10 @@
 const Route = require('../models/Route');
 const portscanner = require('portscanner');
 const { setupGatewayRoutes } = require('./proxy.controller'); 
-// const bcrypt = require('bcryptjs'); // Mantido se usado em outras partes
+
+// --- Configuração Centralizada do Host ---
+// Garante que o HOST seja pego da variável de ambiente, com fallback para localhost (127.0.0.1 é preferível)
+const getHostAddress = () => process.env.PORT_CHECK_HOST || '127.0.0.1';
 
 
 // --- Funções de Ajuda ---
@@ -11,9 +14,26 @@ const generateRandomPath = (length = 8) => {
     return Math.random().toString(36).substring(2, 2 + length);
 };
 
+/**
+ * Gera um array de portas de 1 até o limite especificado.
+ * O limite de 5000 é usado para cobrir a maioria dos serviços comuns e personalizados.
+ */
+const generatePortScanRange = (limit = 5000) => {
+    const ports = [];
+    // Começamos em 1, pois portas muito baixas (ex: 1 a 10) são raras para aplicações
+    // mas incluídas para cobrir a faixa de 5000
+    for (let i = 1; i <= limit; i++) { 
+        // Excluímos portas conhecidas do Gateway/DB para evitar listar a si mesmo
+        if (i !== 8000 && i !== 27017) {
+            ports.push(i);
+        }
+    }
+    return ports;
+};
+
 // --- Checagem de Saúde (Health Check) ---
 const checkRouteHealth = async (routes) => {
-    const HOST = process.env.PORT_CHECK_HOST || '127.0.0.1';
+    const HOST = getHostAddress();
     
     // Mapeia e executa todas as checagens em paralelo
     const routesWithHealth = await Promise.all(routes.map(async (route) => {
@@ -21,10 +41,12 @@ const checkRouteHealth = async (routes) => {
         
         if (route.is_active && route.check_port) {
             try {
+                // Checa a porta no Host usando o endereço correto (vps-host ou 127.0.0.1)
                 const status = await portscanner.checkPortStatus(route.check_port, HOST);
                 isHealthy = (status === 'open');
             } catch (e) {
-                isHealthy = false;
+                // Em caso de erro de conexão, assume-se que está offline
+                isHealthy = false; 
             }
         }
 
@@ -39,21 +61,31 @@ const checkRouteHealth = async (routes) => {
 };
 
 
-// --- CRUD DE ROTAS: Descoberta de Portas ---
+// --- CRUD DE ROTAS: Descoberta de Portas (Alterado) ---
 const discoverAvailablePorts = async (req, res) => {
     try {
-        const ALL_PORTS_TO_CHECK = [3000, 3001, 3002, 3003, 4000, 4001, 8080, 8081]; 
-        const HOST = process.env.PORT_CHECK_HOST || '127.0.0.1';
+        // NOVO: Escaneia todas as portas de 1 a 5000
+        const ALL_PORTS_TO_CHECK = generatePortScanRange(5000); 
+        const HOST = getHostAddress();
         
         const registeredRoutes = await Route.find().select('check_port');
-        const registeredPorts = registeredRoutes.map(r => r.check_port);
+        // Converte para Number para garantir comparação correta
+        const registeredPorts = registeredRoutes.map(r => Number(r.check_port)); 
         
         const availableActivePorts = [];
 
+        // Esta iteração fará o Health Check em 5000 portas. 
+        // O desempenho dependerá da biblioteca portscanner.
         for (const port of ALL_PORTS_TO_CHECK) {
+            // Verifica se a porta já está registrada antes de escanear
+            if (registeredPorts.includes(port)) {
+                continue; 
+            }
+            
+            // O escaneamento da porta é feito no Host (vps-host)
             const status = await portscanner.checkPortStatus(port, HOST);
             
-            if (status === 'open' && !registeredPorts.includes(port)) {
+            if (status === 'open') {
                 availableActivePorts.push(port);
             }
         }
@@ -67,7 +99,7 @@ const discoverAvailablePorts = async (req, res) => {
 };
 
 
-// --- CRUD DE ROTAS: CREATE (Modificado para Nome da Rota) ---
+// --- CRUD DE ROTAS: CREATE (Corrigido Target URL) ---
 
 const createRoute = async (req, res) => {
     try {
@@ -78,7 +110,9 @@ const createRoute = async (req, res) => {
         }
         
         const newRoutePath = generateRandomPath();
-        const newTargetUrl = `http://${process.env.PORT_CHECK_HOST || 'localhost'}:${check_port}`;
+        
+        // CORREÇÃO: Usa o endereço HOST real (vps-host ou 127.0.0.1)
+        const newTargetUrl = `http://${getHostAddress()}:${check_port}`;
         
         // Checagem de Conflito de Nome
         const existingName = await Route.findOne({ name });
@@ -102,7 +136,8 @@ const createRoute = async (req, res) => {
         
         await newRoute.save();
         
-        await setupGatewayRoutes({ PORT_CHECK_HOST: process.env.PORT_CHECK_HOST });
+        // O setupGatewayRoutes precisa ser atualizado com o HOST correto
+        await setupGatewayRoutes({ PORT_CHECK_HOST: getHostAddress() });
         
         res.status(201).json({ 
             message: "Rota criada e Gateway reiniciado com sucesso.", 
@@ -115,7 +150,7 @@ const createRoute = async (req, res) => {
 };
 
 
-// --- CRUD DE ROTAS: READ (Modificado) ---
+// --- CRUD DE ROTAS: READ ---
 
 const getAllRoutes = async (req, res) => {
     try {
@@ -142,7 +177,7 @@ const getRouteById = async (req, res) => {
 };
 
 
-// --- CRUD DE ROTAS: UPDATE (Modificado para Nome da Rota) ---
+// --- CRUD DE ROTAS: UPDATE (Corrigido) ---
 
 const updateRoute = async (req, res) => {
     try {
@@ -153,6 +188,11 @@ const updateRoute = async (req, res) => {
                 return res.status(400).json({ message: `O nome "${req.body.name}" já está em uso por outra rota.` });
             }
         }
+        
+        // Se a porta for alterada, o target_url precisa ser recalculado
+        if (req.body.check_port) {
+            req.body.target_url = `http://${getHostAddress()}:${req.body.check_port}`;
+        }
 
         const updatedRoute = await Route.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
         
@@ -160,7 +200,7 @@ const updateRoute = async (req, res) => {
             return res.status(404).json({ message: "Rota não encontrada." });
         }
         
-        await setupGatewayRoutes({ PORT_CHECK_HOST: process.env.PORT_CHECK_HOST });
+        await setupGatewayRoutes({ PORT_CHECK_HOST: getHostAddress() });
 
         res.status(200).json({ message: "Rota atualizada e Gateway reiniciado com sucesso.", route: updatedRoute });
     } catch (err) {
@@ -179,7 +219,7 @@ const deleteRoute = async (req, res) => {
             return res.status(404).json({ message: "Rota não encontrada." });
         }
         
-        await setupGatewayRoutes({ PORT_CHECK_HOST: process.env.PORT_CHECK_HOST });
+        await setupGatewayRoutes({ PORT_CHECK_HOST: getHostAddress() });
 
         res.status(200).json({ message: "Rota deletada e Gateway reiniciado com sucesso." });
     } catch (err) {
@@ -190,7 +230,7 @@ const deleteRoute = async (req, res) => {
 
 module.exports = {
     discoverAvailablePorts, 
-    createRoute,            
+    createRoute,             
     getAllRoutes, 
     getRouteById,
     updateRoute,
