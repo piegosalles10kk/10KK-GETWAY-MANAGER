@@ -51,23 +51,24 @@ const setupGatewayRoutes = async ({ PORT_CHECK_HOST }) => {
                 
                 // Corrige o cabeçalho Host
                 changeOrigin: true, 
-
+                
                 // Remove o prefixo do proxy antes de enviar ao serviço
-                // Ex: /service/backoffice/style.css -> /style.css
+                // Ex: /service/portfolio/style.css -> /style.css
                 pathRewrite: {
                     [`^${route_path}`]: '', 
                 },
                 
-                // WebSockets
+                // WebSockets support
                 ws: true,
                 
-                // Headers customizados
+                // Headers para melhor compatibilidade
                 headers: {
-                    'X-Forwarded-Proto': 'http',
-                    'X-Forwarded-Host': 'localhost',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                    'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
+                    'Cache-Control': 'no-cache',
                 },
 
-                // Intercepta a resposta para modificar conteúdo HTML
+                // Intercepta e modifica apenas respostas HTML
                 selfHandleResponse: true,
                 
                 onProxyRes: (proxyRes, req, res) => {
@@ -82,9 +83,8 @@ const setupGatewayRoutes = async ({ PORT_CHECK_HOST }) => {
                         const contentType = proxyRes.headers['content-type'] || '';
                         const url = req.url;
                         
-                        // Copia os headers da resposta original
+                        // Copia os headers da resposta original (exceto os problemáticos)
                         Object.keys(proxyRes.headers).forEach(key => {
-                            // Remove headers que podem causar problemas com proxy
                             if (!['content-encoding', 'content-length', 'transfer-encoding'].includes(key.toLowerCase())) {
                                 res.setHeader(key, proxyRes.headers[key]);
                             }
@@ -92,16 +92,20 @@ const setupGatewayRoutes = async ({ PORT_CHECK_HOST }) => {
                         
                         res.statusCode = proxyRes.statusCode;
 
-                        // Se for HTML, injeta a tag base para corrigir URLs relativos
-                        if (contentType.includes('text/html') && !url.includes('.')) {
+                        // APENAS modifica HTML da rota principal, não assets
+                        const isMainHtmlRoute = (
+                            contentType.includes('text/html') && 
+                            (url === '/' || url === '' || !url.includes('.'))
+                        );
+
+                        if (isMainHtmlRoute) {
                             let htmlContent = body.toString();
                             
                             // Calcula o basePath correto - sempre com barra no final
                             const basePath = route_path.endsWith('/') ? route_path : route_path + '/';
                             const baseTag = `<base href="${basePath}">`;
                             
-                            // Debug log
-                            console.log(`[HTML INJECT] Injetando base href="${basePath}" em ${req.originalUrl}`);
+                            console.log(`[HTML INJECT] 🎯 Injetando base href="${basePath}" em ${req.originalUrl}`);
                             
                             // Injeta a tag base logo após <head>
                             if (htmlContent.includes('<head>')) {
@@ -110,52 +114,72 @@ const setupGatewayRoutes = async ({ PORT_CHECK_HOST }) => {
                                     `<head>\n    ${baseTag}`
                                 );
                             } else if (htmlContent.includes('<html>')) {
-                                // Se não tem <head>, adiciona no início do HTML
+                                // Se não tem <head>, cria um
                                 htmlContent = htmlContent.replace(
                                     /<html([^>]*)>/i,
                                     `<html$1>\n<head>\n    ${baseTag}\n</head>`
                                 );
-                            } else {
-                                // Fallback: adiciona no início do documento
-                                htmlContent = `<!DOCTYPE html>\n<html><head>${baseTag}</head><body>\n${htmlContent}\n</body></html>`;
                             }
                             
-                            // Define o Content-Length correto
+                            // Define headers corretos para HTML
                             const buffer = Buffer.from(htmlContent, 'utf8');
                             res.setHeader('Content-Length', buffer.length);
                             res.setHeader('Content-Type', 'text/html; charset=utf-8');
                             res.end(buffer);
+                            
                         } else {
-                            // Para outros tipos de conteúdo (CSS, JS, imagens), envia sem modificação
-                            console.log(`[ASSET] Servindo ${req.originalUrl} como ${contentType}`);
-                            res.setHeader('Content-Length', body.length);
+                            // Para TODOS os outros arquivos (CSS, JS, imagens, etc), passa direto
+                            console.log(`[ASSET] 📄 Servindo ${req.originalUrl} (${contentType || 'unknown'}) - ${body.length} bytes`);
+                            
+                            if (body.length > 0) {
+                                res.setHeader('Content-Length', body.length);
+                            }
+                            
+                            // Adiciona headers específicos para assets
+                            if (contentType.includes('text/css')) {
+                                res.setHeader('Content-Type', 'text/css; charset=utf-8');
+                            } else if (contentType.includes('javascript') || url.endsWith('.js')) {
+                                res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+                            }
+                            
                             res.end(body);
                         }
                     });
 
                     proxyRes.on('error', (err) => {
-                        console.error(`[PROXY ERROR] Erro na resposta para ${req.originalUrl}:`, err.message);
-                        res.status(502).json({
-                            error: 'Bad Gateway',
-                            message: 'Erro ao processar resposta do serviço'
-                        });
+                        console.error(`[PROXY ERROR] ❌ Erro na resposta para ${req.originalUrl}:`, err.message);
+                        if (!res.headersSent) {
+                            res.status(502).json({
+                                error: 'Bad Gateway',
+                                message: 'Erro ao processar resposta do serviço'
+                            });
+                        }
                     });
                 },
                 
                 onProxyReq: (proxyReq, req, res) => {
-                    console.log(`[PROXY] Redirecionando ${req.method} ${req.originalUrl} para ${target_url}`);
+                    console.log(`[PROXY] 🔄 ${req.method} ${req.originalUrl} -> ${target_url}${req.url}`);
                     
-                    // Remove headers problemáticos
+                    // Remove header de encoding para evitar problemas
                     proxyReq.removeHeader('accept-encoding');
+                    
+                    // Adiciona headers úteis
+                    proxyReq.setHeader('User-Agent', 'API-Gateway-Proxy/1.0');
+                    proxyReq.setHeader('X-Forwarded-For', req.connection.remoteAddress);
+                    proxyReq.setHeader('X-Forwarded-Proto', req.protocol);
+                    proxyReq.setHeader('X-Forwarded-Host', req.get('Host'));
                 },
 
                 onError: (err, req, res) => {
-                    console.error(`[PROXY ERROR] Erro ao proxificar ${req.originalUrl}:`, err.message);
-                    res.status(502).json({
-                        error: 'Bad Gateway',
-                        message: 'Erro ao conectar com o serviço de destino',
-                        target: target_url
-                    });
+                    console.error(`[PROXY ERROR] ❌ Erro de conexão ${req.originalUrl}:`, err.message);
+                    if (!res.headersSent) {
+                        res.status(502).json({
+                            error: 'Bad Gateway',
+                            message: 'Erro ao conectar com o serviço de destino',
+                            target: target_url,
+                            details: err.message
+                        });
+                    }
                 }
             };
 
@@ -165,7 +189,7 @@ const setupGatewayRoutes = async ({ PORT_CHECK_HOST }) => {
         })); 
 
     } catch (error) {
-        console.error("Erro ao carregar e configurar as rotas do Gateway:", error);
+        console.error("❌ Erro ao carregar e configurar as rotas do Gateway:", error);
     }
 };
 
