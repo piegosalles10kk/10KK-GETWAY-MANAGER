@@ -5,16 +5,18 @@ services:
   gateway:
     build: .
     container_name: api-gateway-manager
-    # NOVO MAPEAMENTO DE PORTA: Host 8000 -> Container 8000
+    # Mapeamento: Host 8000 -> Container 8000
     ports:
       - "8000:8000"
     restart: always
     environment:
-      # O hostname do MongoDB é o nome do serviço (mongo-db)
+      # Conexão com MongoDB no Docker
       MONGO_URI: mongodb://mongo-db:27017/api-gateway-db
       JWT_SECRET: PieGoCAmiSa10
       ADMIN_USERNAME: admin
       ADMIN_PASSWORD: password123
+      # CORREÇÃO: Variável que seu app.js usa, mapeada para o Host
+      PORT_CHECK_HOST: host.docker.internal 
     depends_on:
       - mongo-db
       
@@ -22,10 +24,8 @@ services:
   mongo-db:
     image: mongo:4.4
     container_name: mongodb
-    # Mapeia a porta padrão do MongoDB (opcional)
     ports:
       - "27017:27017"
-    # Mapeia um volume para persistir os dados do banco
     volumes:
       - mongo-data:/data/db
 
