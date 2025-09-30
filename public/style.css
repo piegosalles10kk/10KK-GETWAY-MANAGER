@@ -1,8 +1,16 @@
-/* public/style.css */
+/* public/style.css - Versão Completa com Grid Corrigido e Reset Agressivo */
+
+/* --- RESET CHAVE GLOBAL --- */
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+    margin: 0; /* GARANTE QUE TODAS AS MARGENS SÃO ZERADAS INICIALMENTE */
+    padding: 0; /* GARANTE QUE TODOS OS PADDINGS SÃO ZERADOS INICIALMENTE */
+}
 
 /* --- VARIÁVEIS DE COR --- */
 :root {
-    /* Cores do Tema */
     --bg-primary: #f4f7f9;
     --bg-secondary: #ffffff;
     --text-primary: #34495e;
@@ -17,10 +25,10 @@
 
 /* Modo Dark */
 body.dark-mode {
-    --bg-primary: #2c3e50; /* Azul escuro/Chumbo */
-    --bg-secondary: #34495e; /* Azul escuro mais claro */
-    --text-primary: #ecf0f1; /* Branco suave */
-    --text-secondary: #bdc3c7; /* Cinza claro */
+    --bg-primary: #2c3e50; 
+    --bg-secondary: #34495e; 
+    --text-primary: #ecf0f1; 
+    --text-secondary: #bdc3c7; 
     --border-color: #5d6d7e;
     --header-bg: #293441;
     --card-bg: #34495e;
@@ -33,20 +41,18 @@ body.dark-mode {
 /* --- RESET BÁSICO E TIPOGRAFIA --- */
 body {
     font-family: 'Poppins', sans-serif;
-    margin: 0;
+    /* Ajusta a margem do body para 0 (garantido pelo reset, mas redundante) */
+    margin: 0; 
     padding: 0;
     background-color: var(--bg-primary);
     color: var(--text-primary);
     transition: background-color 0.3s, color 0.3s;
 }
 
-.container {
-    width: 90%;
-    max-width: 1200px;
-    margin: 0 auto;
-}
-
-h1, h2, h3 {
+/* Reintroduz as margens e paddings necessários */
+h1, h2, h3, p {
+    margin: 0;
+    padding: 0;
     color: var(--text-primary);
     font-weight: 600;
 }
@@ -61,6 +67,18 @@ h2 {
     display: none !important;
 }
 
+/* --- CONTÊINER PRINCIPAL --- */
+
+.container {
+    width: 95%; /* 95% de largura */
+    max-width: 1280px; 
+    margin: 0 auto;
+    /* Adiciona padding interno para o conteúdo não colar nas bordas */
+    padding-left: 15px;
+    padding-right: 15px; 
+}
+
+
 /* --- LAYOUT PRINCIPAL E HEADER --- */
 
 .main-header {
@@ -74,22 +92,26 @@ h2 {
 .main-header .container {
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    align-items: center; 
+    height: 100%;
 }
 
 .logo {
     font-size: 20px;
     font-weight: 700;
+    display: flex; 
+    align-items: center;
+    gap: 8px; 
 }
 
 .logo i {
-    margin-right: 8px;
+    margin-right: 0; 
 }
 
 .auth-controls {
     display: flex;
     align-items: center;
-    gap: 15px; /* Espaço entre o toggle e o botão Sair */
+    gap: 15px; 
 }
 
 /* --- ESTILO DOS BOTÕES GERAIS --- */
@@ -151,8 +173,11 @@ h2 {
 }
 
 
-/* --- SEÇÃO DE LOGIN --- */
-#login-view {
+/* --- SEÇÃO DE LOGIN/ACESSO --- */
+#login-view,
+#first-access-view,
+#request-reset-view,
+#reset-password-view {
     display: flex;
     justify-content: center;
     align-items: center;
@@ -169,35 +194,90 @@ h2 {
     transition: background-color 0.3s;
 }
 
-#login-form input {
+.login-box h2 {
+    margin-bottom: 20px;
+}
+
+#login-form input,
+#first-access-form input,
+#request-reset-form input,
+#reset-password-form input {
     width: 100%;
     padding: 12px;
     margin-bottom: 15px;
     border: 1px solid var(--border-color);
     border-radius: 4px;
-    box-sizing: border-box;
+    /* box-sizing: border-box já está no reset global */
     background-color: var(--input-bg);
     color: var(--text-primary);
     transition: background-color 0.3s, border-color 0.3s;
 }
 
-#login-message {
-    color: #e74c3c;
-    text-align: center;
-    margin-top: 15px;
+.login-box p {
+    color: var(--text-secondary);
+    font-size: 14px;
+    margin-bottom: 20px;
+    line-height: 1.5;
 }
 
+#reset-info {
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 15px;
+}
 
-/* --- DASHBOARD - CARDS DE STATUS --- */
+#login-message, #first-access-message, #request-reset-message, #reset-password-message {
+    text-align: center;
+    margin-top: 15px;
+    padding: 5px;
+    border-radius: 4px;
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.error-message {
+    color: #e74c3c;
+    background-color: rgba(231, 76, 60, 0.1);
+}
+
+.success-message {
+    color: #27ae60;
+    background-color: rgba(39, 174, 96, 0.1);
+}
+
+#forgot-password-link,
+#back-to-login-from-request {
+    display: block; 
+    text-align: center;
+    margin-top: 15px;
+    font-size: 14px;
+    color: #3498db; 
+    text-decoration: none;
+    transition: color 0.2s;
+}
+
+#forgot-password-link:hover,
+#back-to-login-from-request:hover {
+    color: #2980b9; 
+    text-decoration: underline;
+}
+
+/* --- DASHBOARD - CARDS DE STATUS (SOLUÇÃO FINAL) --- */
 .main-content-area {
     padding-top: 30px;
     padding-bottom: 50px;
+    /* O padding lateral vem do .container, não aqui */
 }
 
 .cards-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 20px;
+    /* MUDANÇA CHAVE: GRID é a forma correta e mais simples */
+    display: grid; 
+    /* Força 3 colunas iguais */
+    grid-template-columns: repeat(3, 1fr); 
+    gap: 20px; /* Mantém o gap padrão */
+    align-items: stretch; 
+    justify-content: center; 
+    margin-bottom: 30px;
 }
 
 .card {
@@ -208,14 +288,34 @@ h2 {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    border-left: 5px solid #3498db; 
-    transition: background-color 0.3s, border-left 0.3s;
+    
+    border-left: 0px solid transparent; 
+    transition: background-color 0.3s;
+    height: 100%; 
+    
+    /* Zera quaisquer resquícios de Flexbox/min-width */
+    flex: initial; 
+    min-width: 0; 
+    width: 100%; 
+}
+
+
+/* Estilos de borda colorida para cada card */
+.card.status-card:nth-child(1) {
+    border-left: 5px solid #3498db; /* Azul */
+}
+.card.status-card:nth-child(2) {
+    border-left: 5px solid #e67e22; /* Laranja */
+}
+.card.status-card:nth-child(3) {
+    border-left: 5px solid #9b59b6; /* Roxo */
 }
 
 .card p {
     color: var(--text-secondary);
-    margin: 5px 0;
+    margin: 5px 0; 
     font-size: 14px;
+    font-weight: 400;
     transition: color 0.3s;
 }
 
@@ -224,11 +324,12 @@ h2 {
     font-size: 32px;
     font-weight: 700;
     margin: 0;
+    margin-top: auto; 
 }
 
 .card-icon {
     font-size: 28px;
-    margin-bottom: 10px;
+    margin-bottom: 10px; 
 }
 
 .card-icon.blue { color: #3498db; }
@@ -237,6 +338,42 @@ h2 {
 
 
 /* --- FORMULÁRIO DE CONTROLE DE ROTAS --- */
+
+.form-toggle-mode {
+    background-color: var(--bg-secondary);
+    padding: 15px 20px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    display: flex;
+    align-items: center; 
+    gap: 15px;
+    transition: background-color 0.3s, box-shadow 0.3s;
+}
+
+.form-toggle-mode label {
+    font-weight: 600;
+    color: var(--text-primary);
+    cursor: pointer;
+    user-select: none;
+    font-size: 15px;
+}
+
+.form-toggle-mode input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+    accent-color: #3498db;
+}
+
+.form-toggle-mode .info-text {
+    flex-grow: 1;
+    margin: 0;
+    font-size: 13px;
+    color: var(--text-secondary);
+    font-weight: 400;
+}
+
 
 .dynamic-form {
     background-color: var(--bg-secondary);
@@ -259,7 +396,7 @@ h2 {
     padding: 12px;
     border: 1px solid var(--border-color);
     border-radius: 4px;
-    box-sizing: border-box;
+    /* box-sizing: border-box já está no reset global */
     background-color: var(--input-bg);
     color: var(--text-primary);
     transition: background-color 0.3s, border-color 0.3s, color 0.3s;
@@ -305,7 +442,7 @@ h2 {
     color: var(--text-primary);
     transition: all 0.3s ease;
     height: 42px; 
-    box-sizing: border-box;
+    /* box-sizing: border-box já está no reset global */
 }
 
 .custom-select-trigger:hover {
@@ -357,6 +494,7 @@ h2 {
 .custom-option .info-text {
     font-size: 12px;
     color: var(--text-secondary);
+    font-weight: 400;
 }
 
 .custom-option.selected .info-text,
@@ -376,7 +514,7 @@ h2 {
     border: 1px solid var(--border-color);
     border-radius: 8px;
     font-size: 16px;
-    box-sizing: border-box;
+    /* box-sizing: border-box já está no reset global */
     background-color: var(--bg-secondary);
     color: var(--text-primary);
     transition: all 0.3s;
@@ -436,6 +574,15 @@ h2 {
     background-color: var(--input-bg);
 }
 
+.route-link {
+    color: #3498db;
+    text-decoration: none;
+}
+
+.route-link:hover {
+    text-decoration: underline;
+}
+
 /* Status Dot */
 .status-dot {
     height: 8px;
@@ -476,6 +623,11 @@ h2 {
     right: 0;
     top: 0;
     transition: .4s;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 5px; 
+    /* box-sizing: border-box já está no reset global */
 }
 
 .slider:before {
@@ -487,6 +639,7 @@ h2 {
     position: absolute;
     transition: .4s;
     width: 22px;
+    z-index: 1; 
 }
 
 input:checked + .slider {
@@ -494,7 +647,7 @@ input:checked + .slider {
 }
 
 input:checked + .slider:before {
-    transform: translateX(30px);
+    transform: translateX(26px); 
 }
 
 .slider.round {
@@ -505,24 +658,22 @@ input:checked + .slider:before {
     border-radius: 50%;
 }
 
-/* Ícones dentro do slider (CORES CORRIGIDAS) */
 .slider .icon-light, .slider .icon-dark {
-    position: absolute;
-    font-size: 12px;
-    line-height: 30px;
+    position: relative; 
+    font-size: 14px; 
+    line-height: 1;
     transition: opacity 0.4s;
+    z-index: 0; 
 }
 
 .slider .icon-light {
-    left: 8px;
     opacity: 1;
     color: #f39c12; 
 }
 
 .slider .icon-dark {
-    right: 8px;
     opacity: 0;
-    color: #ecf0f1; 
+    color: var(--text-primary); 
 }
 
 input:checked + .slider .icon-light {
@@ -541,7 +692,7 @@ input:checked + .slider .icon-dark {
     left: 0;
     width: 100%;
     height: 100%;
-    background-color: rgba(0, 0, 0, 0.7); /* Overlay escuro */
+    background-color: rgba(0, 0, 0, 0.7); 
     display: flex;
     justify-content: center;
     align-items: center;
@@ -580,11 +731,11 @@ input:checked + .slider .icon-dark {
 }
 
 .modal-icon.success {
-    color: #2ecc71; /* Verde */
+    color: #2ecc71; 
 }
 
 .modal-icon.error {
-    color: #e74c3c; /* Vermelho */
+    color: #e74c3c; 
 }
 
 #modal-title {
@@ -594,10 +745,19 @@ input:checked + .slider .icon-dark {
 
 #modal-message {
     color: var(--text-secondary);
+    font-weight: 400;
     margin-bottom: 25px;
 }
 
 /* --- MEDIA QUERIES --- */
+
+@media (max-width: 992px) {
+    .cards-grid {
+        /* Permite 2 colunas em telas médias */
+        grid-template-columns: repeat(2, 1fr); 
+        gap: 15px;
+    }
+}
 
 @media (max-width: 768px) {
     .main-header .container {
@@ -606,6 +766,12 @@ input:checked + .slider .icon-dark {
     .auth-controls {
         margin-top: 10px;
     }
+    
+    .cards-grid {
+        /* Garante 1 coluna em telas pequenas */
+        grid-template-columns: 1fr; 
+    }
+    
     .dynamic-form {
         flex-direction: column;
         gap: 10px;
