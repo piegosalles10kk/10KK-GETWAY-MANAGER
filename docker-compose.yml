@@ -4,7 +4,7 @@ services:
   # --- 1. API GATEWAY MANAGER (Seu Serviço Principal) ---
   gateway:
     build: .
-    container_name: api-gateway-manager
+    container_name: api-gateway-manager-on
     # Mapeamento: Host 8000 (Seu VPS) -> Container 8000 (Seu app.js)
     ports:
       - "8000:8000"
@@ -27,7 +27,7 @@ services:
     container_name: mongodb
     # Opcional: Para acessar o DB externamente (com ferramentas como o Compass)
     ports:
-      - "27017:27017"
+      - "27018:27018"
     # Mapeia um volume para persistir os dados do banco
     volumes:
       - mongo-data:/data/db

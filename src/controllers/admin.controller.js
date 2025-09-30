@@ -14,6 +14,18 @@ const generateRandomPath = (length = 8) => {
 };
 
 /**
+ * NOVA FUNÇÃO: Valida se uma URL é externa e válida
+ */
+const isValidExternalUrl = (url) => {
+    try {
+        const parsedUrl = new URL(url);
+        return parsedUrl.protocol === 'http:' || parsedUrl.protocol === 'https:';
+    } catch (e) {
+        return false;
+    }
+};
+
+/**
  * Gera um array de portas de 1 a 5000 e adiciona portas específicas.
  * A porta 8000 (Gateway) e 27017 (MongoDB) são excluídas da lista de escaneamento.
  */
@@ -47,7 +59,10 @@ const checkRouteHealth = async (routes) => {
     const routesWithHealth = await Promise.all(routes.map(async (route) => {
         let isHealthy = false;
         
-        if (route.is_active && route.check_port) {
+        // AJUSTE: Rotas externas (check_port = 0) são sempre marcadas como healthy
+        if (route.check_port === 0) {
+            isHealthy = true;
+        } else if (route.is_active && route.check_port) {
             try {
                 // Checa a porta no Host usando o endereço correto
                 const status = await portscanner.checkPortStatus(route.check_port, HOST);
@@ -103,53 +118,141 @@ const discoverAvailablePorts = async (req, res) => {
 };
 
 
-// --- CRUD DE ROTAS: CREATE (Corrigido Target URL) ---
-
+/**
+ * CREATE - Cria nova rota (Dinâmica ou Externa)
+ */
 const createRoute = async (req, res) => {
     try {
-        const { name, check_port } = req.body; 
-
-        if (!check_port || !name) {
-             return res.status(400).json({ message: "O nome da rota e a porta para o serviço (check_port) são obrigatórios." });
+        const { name, check_port, route_path, target_url } = req.body;
+        
+        // Validação: Nome é obrigatório
+        if (!name || !name.trim()) {
+            return res.status(400).json({ message: "O nome da rota é obrigatório." });
         }
         
+        // Validação: check_port é obrigatório
+        if (check_port === undefined || check_port === null) {
+            return res.status(400).json({ message: "A porta de verificação é obrigatória." });
+        }
+        
+        const portNumber = parseInt(check_port, 10);
+        
+        // Validação: check_port deve ser número válido
+        if (isNaN(portNumber) || portNumber < 0) {
+            return res.status(400).json({ message: "Porta inválida." });
+        }
+        
+        // ==========================================
+        // MODO 1: ROTA EXTERNA (check_port = 0)
+        // ==========================================
+        if (portNumber === 0) {
+            // Validações específicas para rota externa
+            if (!route_path || !route_path.trim()) {
+                return res.status(400).json({ message: "O caminho da rota é obrigatório para rotas externas." });
+            }
+            
+            if (!target_url || !target_url.trim()) {
+                return res.status(400).json({ message: "A URL de destino é obrigatória para rotas externas." });
+            }
+            
+            // Valida formato da URL externa
+            if (!isValidExternalUrl(target_url)) {
+                return res.status(400).json({ 
+                    message: "URL de destino inválida. Use formato completo: http:// ou https://" 
+                });
+            }
+            
+            // Normaliza o caminho da rota
+            let normalizedPath = route_path.trim();
+            if (!normalizedPath.startsWith('/')) {
+                normalizedPath = '/' + normalizedPath;
+            }
+            
+            // Checagem de conflito de caminho
+            const existingPath = await Route.findOne({ route_path: normalizedPath });
+            if (existingPath) {
+                return res.status(400).json({ 
+                    message: `O caminho "${normalizedPath}" já está em uso pela rota "${existingPath.name}".` 
+                });
+            }
+            
+            // Checagem de conflito de nome
+            const existingName = await Route.findOne({ name: name.trim() });
+            if (existingName) {
+                return res.status(400).json({ 
+                    message: `O nome "${name}" já está em uso.` 
+                });
+            }
+            
+            // Cria rota externa
+            const newRoute = new Route({
+                name: name.trim(),
+                route_path: normalizedPath,
+                target_url: target_url.trim(),
+                check_port: 0, // Marca como externa
+                is_active: true,
+                is_healthy: true // Rotas externas sempre healthy
+            });
+            
+            await newRoute.save();
+            await setupGatewayRoutes({ PORT_CHECK_HOST: getHostAddress() });
+            
+            return res.status(201).json({
+                message: `Rota externa "${name}" criada e Gateway reiniciado com sucesso.`,
+                route: newRoute
+            });
+        }
+        
+        // ==========================================
+        // MODO 2: ROTA DINÂMICA (check_port > 0)
+        // ==========================================
+        
+        // Checagem de conflito de nome
+        const existingName = await Route.findOne({ name: name.trim() });
+        if (existingName) {
+            return res.status(400).json({ 
+                message: `O nome "${name}" já está em uso.` 
+            });
+        }
+        
+        // Checagem de conflito de porta
+        const existingPort = await Route.findOne({ check_port: portNumber });
+        if (existingPort) {
+            return res.status(400).json({ 
+                message: `A porta ${portNumber} já está registrada na rota "${existingPort.name}" (${existingPort.route_path}).` 
+            });
+        }
+        
+        // Gera caminho aleatório
         const newRoutePath = generateRandomPath();
+        const generatedPath = `/service/${newRoutePath}`;
         
-        // CORREÇÃO: Usa o endereço HOST real (vps-host)
-        const newTargetUrl = `http://${getHostAddress()}:${check_port}`;
+        // Monta a URL de destino com o host local
+        const newTargetUrl = `http://${getHostAddress()}:${portNumber}`;
         
-        // Checagem de Conflito de Nome
-        const existingName = await Route.findOne({ name });
-        if(existingName) {
-            return res.status(400).json({ message: `O nome "${name}" já está em uso.` });
-        }
-
-        // Checagem de Conflito de Porta
-        const existingPort = await Route.findOne({ check_port });
-        if(existingPort) {
-            return res.status(400).json({ message: `A porta ${check_port} já está registrada na rota ${existingPort.route_path}.` });
-        }
-
+        // Cria rota dinâmica
         const newRoute = new Route({
-            name: name, 
-            route_path: `/service/${newRoutePath}`, 
+            name: name.trim(),
+            route_path: generatedPath,
             target_url: newTargetUrl,
-            check_port: check_port,
+            check_port: portNumber,
             is_active: true
         });
         
         await newRoute.save();
-        
-        // O setupGatewayRoutes precisa ser atualizado com o HOST correto
         await setupGatewayRoutes({ PORT_CHECK_HOST: getHostAddress() });
         
-        res.status(201).json({ 
-            message: "Rota criada e Gateway reiniciado com sucesso.", 
-            route: newRoute 
+        return res.status(201).json({
+            message: `Rota dinâmica "${name}" criada e Gateway reiniciado com sucesso.`,
+            route: newRoute
         });
-
+        
     } catch (err) {
-        res.status(500).json({ message: "Erro ao criar rota.", error: err.message });
+        console.error('Erro ao criar rota:', err);
+        res.status(500).json({ 
+            message: "Erro ao criar rota.", 
+            error: err.message 
+        });
     }
 };
 
@@ -181,34 +284,116 @@ const getRouteById = async (req, res) => {
 };
 
 
-// --- CRUD DE ROTAS: UPDATE (Corrigido) ---
+// --- CRUD DE ROTAS: UPDATE (Corrigido para Rotas Externas) ---
 
 const updateRoute = async (req, res) => {
     try {
-        // Checa unicidade do nome no update
-        if (req.body.name) {
-            const existingName = await Route.findOne({ name: req.body.name, _id: { $ne: req.params.id } });
-            if (existingName) {
-                return res.status(400).json({ message: `O nome "${req.body.name}" já está em uso por outra rota.` });
-            }
-        }
+        const { id } = req.params;
+        const { name, route_path, target_url, check_port, is_active } = req.body;
         
-        // Se a porta for alterada, o target_url precisa ser recalculado
-        if (req.body.check_port) {
-            req.body.target_url = `http://${getHostAddress()}:${req.body.check_port}`;
-        }
-
-        const updatedRoute = await Route.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
-        
-        if (!updatedRoute) {
+        // Busca a rota existente
+        const existingRoute = await Route.findById(id);
+        if (!existingRoute) {
             return res.status(404).json({ message: "Rota não encontrada." });
         }
         
+        // Validações básicas
+        if (!name || !name.trim()) {
+            return res.status(400).json({ message: "O nome da rota é obrigatório." });
+        }
+        
+        if (!route_path || !route_path.trim()) {
+            return res.status(400).json({ message: "O caminho da rota é obrigatório." });
+        }
+        
+        if (!target_url || !target_url.trim()) {
+            return res.status(400).json({ message: "A URL de destino é obrigatória." });
+        }
+        
+        if (check_port === undefined || check_port === null) {
+            return res.status(400).json({ message: "A porta de verificação é obrigatória." });
+        }
+        
+        const portNumber = parseInt(check_port, 10);
+        
+        if (isNaN(portNumber) || portNumber < 0) {
+            return res.status(400).json({ message: "Porta inválida." });
+        }
+        
+        // Se for rota externa (porta 0), valida a URL
+        if (portNumber === 0 && !isValidExternalUrl(target_url)) {
+            return res.status(400).json({ 
+                message: "URL de destino inválida. Use formato completo: http:// ou https://" 
+            });
+        }
+        
+        // Normaliza o caminho
+        let normalizedPath = route_path.trim();
+        if (!normalizedPath.startsWith('/')) {
+            normalizedPath = '/' + normalizedPath;
+        }
+        
+        // Checagem de conflito de nome (exceto a própria rota)
+        const nameConflict = await Route.findOne({ 
+            name: name.trim(), 
+            _id: { $ne: id } 
+        });
+        if (nameConflict) {
+            return res.status(400).json({ 
+                message: `O nome "${name}" já está em uso por outra rota.` 
+            });
+        }
+        
+        // Checagem de conflito de caminho (exceto a própria rota)
+        const pathConflict = await Route.findOne({ 
+            route_path: normalizedPath, 
+            _id: { $ne: id } 
+        });
+        if (pathConflict) {
+            return res.status(400).json({ 
+                message: `O caminho "${normalizedPath}" já está em uso pela rota "${pathConflict.name}".` 
+            });
+        }
+        
+        // Checagem de conflito de porta (exceto a própria rota e se não for externa)
+        if (portNumber > 0) {
+            const portConflict = await Route.findOne({ 
+                check_port: portNumber, 
+                _id: { $ne: id } 
+            });
+            if (portConflict) {
+                return res.status(400).json({ 
+                    message: `A porta ${portNumber} já está registrada na rota "${portConflict.name}".` 
+                });
+            }
+        }
+        
+        // Atualiza a rota
+        existingRoute.name = name.trim();
+        existingRoute.route_path = normalizedPath;
+        existingRoute.target_url = target_url.trim();
+        existingRoute.check_port = portNumber;
+        existingRoute.is_active = is_active !== undefined ? is_active : true;
+        
+        // Se mudou para rota externa, marca como healthy
+        if (portNumber === 0) {
+            existingRoute.is_healthy = true;
+        }
+        
+        await existingRoute.save();
         await setupGatewayRoutes({ PORT_CHECK_HOST: getHostAddress() });
-
-        res.status(200).json({ message: "Rota atualizada e Gateway reiniciado com sucesso.", route: updatedRoute });
+        
+        res.status(200).json({
+            message: `Rota "${name}" atualizada e Gateway reiniciado com sucesso.`,
+            route: existingRoute
+        });
+        
     } catch (err) {
-        res.status(500).json({ message: "Erro ao atualizar rota.", error: err.message });
+        console.error('Erro ao atualizar rota:', err);
+        res.status(500).json({ 
+            message: "Erro ao atualizar rota.", 
+            error: err.message 
+        });
     }
 };
 

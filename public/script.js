@@ -1,744 +1,809 @@
-// public/script.js
+// ========================================
+// CONFIGURAÇÃO E CONSTANTES
+// ========================================
 
-// === Configuração e Variáveis Globais ===
-
-// NOVO: URL BASE DO GATEWAY
-const BASE_GATEWAY_URL = 'https://piegosalles-backend.cloud/'; 
-
-const API_BASE_URL = window.location.origin;
-// CORREÇÃO: A base da API de Autenticação agora é APENAS /api
-const AUTH_API = `${API_BASE_URL}/api`; 
-const ADMIN_API = `${API_BASE_URL}/admin/routes`;
-const ADMIN_DISCOVER_API = `${API_BASE_URL}/admin/discover`; 
-
-let TOKEN = localStorage.getItem('token') || null;
-
-// Cache local
-let routesCache = []; 
-let availablePorts = [];
-
-// --- Elementos DOM ---
-const views = {
-    login: document.getElementById('login-view'),
-    firstAccess: document.getElementById('first-access-view'),
-    requestReset: document.getElementById('request-reset-view'),
-    resetPassword: document.getElementById('reset-password-view'),
-    dashboard: document.getElementById('dashboard-view'),
+const CONFIG = {
+    BASE_GATEWAY_URL: 'https://piegosalles-backend.cloud/',
+    API_BASE_URL: window.location.origin,
+    get AUTH_API() { return `${this.API_BASE_URL}/api`; },
+    get ADMIN_API() { return `${this.API_BASE_URL}/admin/routes`; },
+    get DISCOVER_API() { return `${this.API_BASE_URL}/admin/discover`; }
 };
 
-const forms = {
-    login: document.getElementById('login-form'),
-    firstAccess: document.getElementById('first-access-form'),
-    requestReset: document.getElementById('request-reset-form'),
-    resetPassword: document.getElementById('reset-password-form'),
+// ========================================
+// GERENCIAMENTO DE ESTADO
+// ========================================
+
+const State = {
+    token: localStorage.getItem('token') || null,
+    routes: [],
+    availablePorts: [],
+    
+    setToken(token) {
+        this.token = token;
+        localStorage.setItem('token', token);
+    },
+    
+    clearToken() {
+        this.token = null;
+        localStorage.removeItem('token');
+    },
+    
+    setRoutes(routes) {
+        this.routes = routes;
+    },
+    
+    setAvailablePorts(ports) {
+        this.availablePorts = ports;
+    }
 };
 
-const messages = {
-    login: document.getElementById('login-message'),
-    firstAccess: document.getElementById('first-access-message'),
-    requestReset: document.getElementById('request-reset-message'),
-    resetPassword: document.getElementById('reset-password-message'),
-};
+// ========================================
+// GERENCIAMENTO DE DOM
+// ========================================
 
-const authElements = {
+const DOM = {
+    // Views
+    views: {
+        login: document.getElementById('login-view'),
+        firstAccess: document.getElementById('first-access-view'),
+        requestReset: document.getElementById('request-reset-view'),
+        resetPassword: document.getElementById('reset-password-view'),
+        dashboard: document.getElementById('dashboard-view')
+    },
+    
+    // Forms
+    forms: {
+        login: document.getElementById('login-form'),
+        firstAccess: document.getElementById('first-access-form'),
+        requestReset: document.getElementById('request-reset-form'),
+        resetPassword: document.getElementById('reset-password-form'),
+        route: document.getElementById('route-form')
+    },
+    
+    // Messages
+    messages: {
+        login: document.getElementById('login-message'),
+        firstAccess: document.getElementById('first-access-message'),
+        requestReset: document.getElementById('request-reset-message'),
+        resetPassword: document.getElementById('reset-password-message')
+    },
+    
+    // Elements
+    authControls: document.querySelector('.auth-controls'),
+    logoutBtn: document.getElementById('logout-btn'),
+    themeToggle: document.getElementById('theme-toggle'),
+    modeToggle: document.getElementById('mode-toggle'),
+    
+    routesTableBody: document.getElementById('routes-table-body'),
+    routeSearch: document.getElementById('route-search'),
+    
+    // Cards
+    usedPortsCard: document.getElementById('used-ports'),
+    availablePortsCard: document.getElementById('available-ports'),
+    totalRoutesCard: document.getElementById('total-routes'),
+    
+    // Modal
+    modal: document.getElementById('modal'),
+    modalIcon: document.getElementById('modal-icon'),
+    modalTitle: document.getElementById('modal-title'),
+    modalMessage: document.getElementById('modal-message'),
+    modalClose: document.getElementById('modal-close'),
+    
+    // Auth links
     forgotPasswordLink: document.getElementById('forgot-password-link'),
-    backToLoginFromRequest: document.getElementById('back-to-login-from-request'),
-    resetTokenField: document.getElementById('reset-token-field'),
-    resetInfo: document.getElementById('reset-info'),
-    newPasswordInput: document.getElementById('new-password'),
-    confirmNewPasswordInput: document.getElementById('confirm-new-password'),
-    authControls: document.querySelector('.auth-controls')
+    backToLoginLink: document.getElementById('back-to-login'),
+    
+    // Reset
+    resetToken: document.getElementById('reset-token'),
+    resetInfo: document.getElementById('reset-info')
 };
 
-// Outros Elementos
-const routeForm = document.getElementById('route-form'); 
-const routeTableBody = document.getElementById('route-table-body');
-const themeToggle = document.getElementById('checkbox'); 
+// ========================================
+// UTILIDADES DE API
+// ========================================
 
-// NOVO: Elemento para alternar o modo de criação (local vs. externo)
-const modeToggle = document.getElementById('mode-toggle'); 
-
-// Modal Elements
-const customModal = document.getElementById('custom-modal');
-const modalTitle = document.getElementById('modal-title');
-const modalMessage = document.getElementById('modal-message');
-const modalIcon = document.getElementById('modal-icon');
-const modalCloseBtn = document.getElementById('modal-close-btn');
-
-// Dashboard Cards
-const usedPortsCard = document.getElementById('used-ports');
-const availablePortsCard = document.getElementById('available-ports');
-const totalRoutesCard = document.getElementById('total-routes');
-
-
-// === LÓGICA DO TEMA (DARK MODE) ===
-
-const initializeTheme = () => {
-    const savedTheme = localStorage.getItem('theme');
-    
-    if (savedTheme === 'dark') {
-        document.body.classList.add('dark-mode');
-        themeToggle.checked = true;
-    } else {
-        document.body.classList.remove('dark-mode');
-        themeToggle.checked = false;
-    }
-};
-
-const toggleTheme = () => {
-    if (themeToggle.checked) {
-        document.body.classList.add('dark-mode');
-        localStorage.setItem('theme', 'dark');
-    } else {
-        document.body.classList.remove('dark-mode');
-        localStorage.setItem('theme', 'light');
-    }
-};
-
-
-// === FUNÇÕES DE UTILIDADE E NAVEGAÇÃO ===
-
-/**
- * Exibe um modal customizado.
- */
-const showModal = (type, title, message) => {
-    modalTitle.textContent = title;
-    modalMessage.textContent = message;
-    
-    const iconClass = type === 'success' ? 'fas fa-check-circle' : 'fas fa-times-circle';
-    modalIcon.className = `modal-icon ${type}`; 
-    modalIcon.innerHTML = `<i class="${iconClass}"></i>`;
-    
-    customModal.classList.add('visible');
-    customModal.classList.remove('hidden');
-
-    const closeModal = () => {
-        customModal.classList.remove('visible');
-        customModal.classList.add('hidden');
-        modalCloseBtn.removeEventListener('click', closeModal);
-    };
-    
-    modalCloseBtn.addEventListener('click', closeModal);
-};
-
-/**
- * Esconde todas as views e mostra a view desejada.
- */
-const showView = (viewName) => {
-    Object.values(views).forEach(view => view.classList.add('hidden'));
-    views[viewName]?.classList.remove('hidden');
-    
-    // Mostra/Esconde controles de autenticação/tema
-    if (viewName === 'dashboard') {
-        authElements.authControls.classList.remove('hidden');
-    } else {
-        authElements.authControls.classList.add('hidden');
-    }
-};
-
-/**
- * Função utilitária para chamadas à API, tratando tokens e erros.
- */
-const makeApiCall = async (url, method = 'GET', data = null, needsAuth = false) => {
-    const headers = {
-        'Content-Type': 'application/json',
-    };
-
-    if (needsAuth && TOKEN) {
-        headers['Authorization'] = `Bearer ${TOKEN}`;
-    }
-
-    const config = { method, headers, body: data ? JSON.stringify(data) : null };
-
-    try {
-        const response = await fetch(url, config);
-        const result = await response.json();
-
-        if (response.status === 401 || response.status === 403) {
-            // Se for chamada autenticada e falhar, desloga
-            if (needsAuth) {
-                logout();
+const API = {
+    async call(url, method = 'GET', data = null, needsAuth = false) {
+        const headers = { 'Content-Type': 'application/json' };
+        
+        if (needsAuth && State.token) {
+            headers['Authorization'] = `Bearer ${State.token}`;
+        }
+        
+        const config = {
+            method,
+            headers,
+            body: data ? JSON.stringify(data) : null
+        };
+        
+        try {
+            const response = await fetch(url, config);
+            const result = await response.json();
+            
+            if (response.status === 401 || response.status === 403) {
+                if (needsAuth) {
+                    Auth.logout();
+                }
+                return { error: true, message: result.message || 'Acesso negado ou sessão expirada.' };
             }
-            // Retorna o erro, mesmo que o logout já tenha ocorrido
-            return { error: true, message: result.message || "Acesso negado ou sessão expirada." };
-        }
-
-        if (!response.ok) {
-            throw new Error(result.message || result.error || 'Erro desconhecido');
-        }
-
-        return result;
-
-    } catch (error) {
-        console.error("Erro na API:", error);
-        // Trata erros de rede
-        if (error.message.includes('Failed to fetch')) {
-             return { error: true, message: "Erro de conexão com o servidor. Verifique se o backend está rodando." };
-        }
-        return { error: true, message: error.message };
-    }
-};
-
-
-// === LÓGICA DE AUTENTICAÇÃO E PRIMEIRO ACESSO ===
-
-/**
- * 1. Verifica se há um token de reset na URL e navega para a view correta.
- */
-const checkUrlForResetToken = async () => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const token = urlParams.get('token');
-
-    if (token) {
-        showView('resetPassword');
-        authElements.resetTokenField.value = token;
-        
-        // Chamada: /api/password-reset/validate/:token
-        const result = await makeApiCall(`${AUTH_API}/password-reset/validate/${token}`);
-
-        if (result.error || !result.valid) {
-            const message = result.message || 'Token inválido, expirado ou já utilizado.';
-            showModal('error', '⚠️ Token Inválido', message);
-            // Limpa o token da URL e volta para o login
-            window.history.pushState({}, document.title, window.location.pathname);
-            showView('login'); 
-        } else {
-            authElements.resetInfo.innerHTML = `Redefina a senha para o email: <strong>${result.email}</strong>`;
-            messages.resetPassword.textContent = result.message;
-        }
-        return true;
-    }
-    return false;
-};
-
-/**
- * 2. Verifica status inicial do sistema e autentica.
- */
-const checkAuth = async () => {
-    // Se há token, tenta ir para o dashboard (assumindo que o token é válido)
-    if (TOKEN) {
-        showView('dashboard');
-        loadDashboardData(); 
-        return;
-    }
-
-    // Se a URL contiver um token de reset, processa a redefinição
-    if (await checkUrlForResetToken()) {
-        return;
-    }
-
-    // Verifica o status do primeiro acesso
-    try {
-        // Chamada: /api/first-access
-        const result = await makeApiCall(`${AUTH_API}/first-access`);
-
-        if (result.needsRegistration) {
-            showView('firstAccess');
-        } else {
-            showView('login');
-        }
-    } catch (error) {
-        // Erro de conexão com o backend
-        showModal('error', '❌ Erro de Conexão', 'Não foi possível se conectar ao backend. Verifique o servidor.');
-        showView('login');
-    }
-};
-
-/**
- * 3. Trata o registro do primeiro usuário.
- */
-forms.firstAccess.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    displayMessage(messages.firstAccess, 'Registrando...', false);
-
-    const name = document.getElementById('fa-name').value;
-    const email = document.getElementById('fa-email').value;
-    const username = document.getElementById('fa-username').value;
-    const password = document.getElementById('fa-password').value;
-
-    // Chamada: /api/register-first
-    const result = await makeApiCall(`${AUTH_API}/register-first`, 'POST', { name, email, username, password });
-
-    if (!result.error) {
-        displayMessage(messages.firstAccess, result.message, false);
-        // Redireciona para o login
-        setTimeout(() => {
-            showView('login');
-            displayMessage(messages.login, "Administrador registrado. Faça login.", false);
-        }, 3000);
-    } else {
-        displayMessage(messages.firstAccess, result.message, true);
-    }
-});
-
-/**
- * 4. Trata o Login.
- */
-forms.login.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    displayMessage(messages.login, 'Entrando...', false);
-
-    const username = document.getElementById('username').value;
-    const password = document.getElementById('password').value;
-
-    // Chamada: /api/login
-    const result = await makeApiCall(`${AUTH_API}/login`, 'POST', { username, password });
-
-    if (!result.error) {
-        TOKEN = result.token; 
-        localStorage.setItem('token', TOKEN);
-        displayMessage(messages.login, '', false);
-        showView('dashboard');
-        loadDashboardData();
-    } else {
-        displayMessage(messages.login, result.message || 'Erro de login.', true);
-    }
-});
-
-/**
- * 5. Logout.
- */
-const logout = () => {
-    TOKEN = null;
-    localStorage.removeItem('token');
-    showView('login');
-    forms.login.reset();
-};
-
-
-// === FLUXO DE RECUPERAÇÃO DE SENHA ===
-
-/**
- * Navega para a view de solicitação de reset.
- */
-authElements.forgotPasswordLink.addEventListener('click', (e) => {
-    e.preventDefault();
-    showView('requestReset');
-    messages.requestReset.textContent = '';
-});
-
-/**
- * Volta da solicitação de reset para a view de login.
- */
-authElements.backToLoginFromRequest.addEventListener('click', (e) => {
-    e.preventDefault();
-    showView('login');
-    messages.login.textContent = '';
-});
-
-/**
- * 6. Trata a solicitação de recuperação de senha.
- */
-forms.requestReset.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    displayMessage(messages.requestReset, 'Enviando link...', false);
-
-    const email = document.getElementById('reset-email').value;
-
-    // Chamada: /api/password-reset/request
-    const result = await makeApiCall(`${AUTH_API}/password-reset/request`, 'POST', { email });
-
-    if (!result.error) {
-        displayMessage(messages.requestReset, result.message, false);
-    } else {
-          // Se houve erro de rede/conexão, exibe o erro
-        displayMessage(messages.requestReset, result.message, true);
-    }
-});
-
-/**
- * 7. Trata a redefinição de senha.
- */
-forms.resetPassword.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    displayMessage(messages.resetPassword, 'Redefinindo senha...', false);
-
-    const token = authElements.resetTokenField.value;
-    const newPassword = authElements.newPasswordInput.value;
-    const confirmNewPassword = authElements.confirmNewPasswordInput.value;
-
-    if (newPassword !== confirmNewPassword) {
-        displayMessage(messages.resetPassword, 'As senhas não coincidem.', true);
-        return;
-    }
-    
-    if (newPassword.length < 6) {
-        displayMessage(messages.resetPassword, 'A senha deve ter no mínimo 6 caracteres.', true);
-        return;
-    }
-
-    // Chamada: /api/password-reset/reset
-    const result = await makeApiCall(`${AUTH_API}/password-reset/reset`, 'POST', { token, newPassword });
-
-    if (!result.error) {
-        displayMessage(messages.resetPassword, result.message, false);
-        showModal('success', '✅ Sucesso!', result.message + ' Redirecionando para login...');
-        
-        // Redireciona para o login após o sucesso e limpa o token da URL
-        setTimeout(() => {
-            showView('login');
-            window.history.pushState({}, document.title, window.location.pathname); 
-            messages.login.textContent = '';
-        }, 4000);
-    } else {
-        displayMessage(messages.resetPassword, result.message, true);
-    }
-});
-
-// Helper para exibir mensagens de formulário (login, firstAccess, etc.)
-const displayMessage = (element, message, isError = false) => {
-    element.textContent = message;
-    element.className = isError ? 'error-message' : 'success-message';
-};
-
-
-// === LÓGICA DO DASHBOARD E CRUD DE ROTAS ===
-
-const fetchRoutes = async () => {
-    // Rota de Admin: /admin/routes (não muda)
-    return makeApiCall(ADMIN_API, 'GET', null, true); 
-};
-
-const loadAvailablePorts = async () => {
-    // Rota de Admin: /admin/discover (não muda)
-    const result = await makeApiCall(ADMIN_DISCOVER_API, 'GET', null, true); 
-    if (result.error) {
-        console.error("Erro ao descobrir portas:", result.message);
-        availablePorts = [];
-        return;
-    }
-    availablePorts = result;
-    renderRouteForm();
-};
-
-const loadDashboardData = async () => {
-    const routes = await fetchRoutes();
-    if (routes.error) return;
-    
-    routesCache = routes; 
-
-    await loadAvailablePorts();
-    
-    // Atualiza os cards
-    totalRoutesCard.textContent = routes.length;
-    // O is_healthy é um bom indicador para a contagem de portas usadas/online
-    usedPortsCard.textContent = routes.filter(r => r.is_healthy).length; 
-    availablePortsCard.textContent = availablePorts.length; 
-    
-    renderRoutesTable(routesCache);
-    
-    const searchInput = document.getElementById('route-search');
-    if (searchInput) {
-        searchInput.value = '';
-    }
-};
-
-const renderRouteForm = (routeToEdit = null) => {
-    routeForm.innerHTML = ''; 
-    
-    // NOVO: Define o modo de criação: false (Dinâmico/Porta) | true (Externo/URL)
-    const isExternalMode = routeToEdit ? false : (modeToggle ? modeToggle.checked : false);
-
-    const nameValue = routeToEdit ? routeToEdit.name : '';
-    const namePlaceholder = routeToEdit ? 'Nome da Rota' : 'Nome (ex: Service Produtos)';
-    
-    routeForm.innerHTML = `
-        <input type="hidden" id="route-id" value="${routeToEdit ? routeToEdit._id : ''}">
-        <input type="text" id="route_name" placeholder="${namePlaceholder}" value="${nameValue}" required>
-    `;
-
-    // Modo de EDIÇÃO
-    if (routeToEdit) {
-        routeForm.innerHTML += `
-            <input type="text" id="route_path" placeholder="Caminho (ex: /api/service)" value="${routeToEdit.route_path}" required>
-            <input type="url" id="target_url" placeholder="URL Destino (http://host:3000 ou URL Externa)" value="${routeToEdit.target_url}" required>
-            <input type="number" id="check_port" placeholder="Porta p/ Health Check (0 para Externo)" value="${routeToEdit.check_port}" required>
-            <div class="form-actions">
-                <button type="submit" id="submit-btn-edit" class="action-btn primary-btn">Salvar Edição</button>
-                <button type="button" id="cancel-btn-form" class="secondary-btn action-btn">Cancelar Edição</button>
-            </div>
-        `;
-        document.getElementById('cancel-btn-form').addEventListener('click', handleCancelEdit);
-        return;
-    }
-
-    // Modo de CRIAÇÃO
-
-    if (isExternalMode) {
-        // NOVO: MODO DE CRIAÇÃO EXTERNA (URL COMPLETA)
-        routeForm.innerHTML += `
-            <input type="text" id="route_path" placeholder="Caminho (ex: /api/externa)" required>
-            <input type="url" id="target_url" placeholder="URL Destino COMPLETA (ex: https://api.terceiros.com/v1)" required>
-            <input type="hidden" id="check_port" value="0"> <button type="submit" id="submit-btn-create" class="action-btn primary-btn">Adicionar Rota Externa</button>
-        `;
-
-    } else if (availablePorts.length > 0) {
-        // MODO CRIAÇÃO DINÂMICA (Porta Local)
-        const defaultText = availablePorts.length > 0 
-            ? 'Clique para selecionar um serviço ativo...'
-            : 'Nenhum serviço ativo e não registrado foi encontrado.';
-        
-        routeForm.innerHTML += `
-            <input type="hidden" id="check_port" value="">
-            <div class="custom-select-container">
-                <div class="custom-select-trigger">
-                    <span id="selected-port-display">${defaultText}</span>
-                    <i class="fas fa-chevron-down arrow"></i>
-                </div>
-                <div class="custom-options">
-                </div>
-            </div>
-            <button type="submit" id="submit-btn-create" class="action-btn primary-btn">Adicionar Rota Dinâmica</button>
-        `;
-        
-        const optionsContainer = routeForm.querySelector('.custom-options');
-        availablePorts.forEach(port => {
-            const optionDiv = document.createElement('div');
-            optionDiv.classList.add('custom-option');
-            optionDiv.setAttribute('data-value', port);
-            optionDiv.innerHTML = `<span class="port-label">Porta ${port}</span><span class="info-text">Serviço Rodando</span>`;
-            optionsContainer.appendChild(optionDiv);
-        });
-
-        setupCustomDropdown();
-    } else {
-        // Mensagem de erro se não houver portas ativas E não estiver em modo externo
-        routeForm.innerHTML += `
-            <p class="error-message">Nenhum serviço ativo e não registrado foi encontrado nas portas monitoradas.</p>
-            <p>Inicie um microserviço e atualize a página.</p>
-        `;
-    }
-};
-
-const setupCustomDropdown = () => {
-    const trigger = document.querySelector('.custom-select-trigger');
-    const options = document.querySelector('.custom-options');
-    const hiddenPortInput = document.getElementById('check_port');
-    const displayElement = document.getElementById('selected-port-display');
-    const allOptions = document.querySelectorAll('.custom-option');
-    
-    trigger.addEventListener('click', () => {
-        options.style.display = options.style.display === 'block' ? 'none' : 'block';
-        trigger.classList.toggle('active');
-    });
-
-    allOptions.forEach(option => {
-        option.addEventListener('click', () => {
-            const port = option.getAttribute('data-value');
-            hiddenPortInput.value = port;
-            displayElement.textContent = `Porta ${port} (Selecionada)`;
             
-            allOptions.forEach(o => o.classList.remove('selected'));
-            option.classList.add('selected');
-            
-            options.style.display = 'none';
-            trigger.classList.remove('active');
-        });
-    });
-
-    document.addEventListener('click', (e) => {
-        if (!trigger || !options) return;
-        if (!trigger.contains(e.target) && !options.contains(e.target)) {
-            options.style.display = 'none';
-            trigger.classList.remove('active');
-        }
-    });
-};
-
-const filterRoutes = (searchTerm) => {
-    const lowerCaseSearchTerm = searchTerm.toLowerCase().trim();
-    
-    if (!lowerCaseSearchTerm) {
-        renderRoutesTable(routesCache);
-        return;
-    }
-
-    const filteredRoutes = routesCache.filter(route => {
-        const name = (route.name || '').toLowerCase();
-        const routePath = (route.route_path || '').toLowerCase();
-        const targetUrl = (route.target_url || '').toLowerCase();
-        const checkPort = (route.check_port || '').toString();
-
-        return name.includes(lowerCaseSearchTerm) ||
-                routePath.includes(lowerCaseSearchTerm) ||
-                targetUrl.includes(lowerCaseSearchTerm) ||
-                checkPort.includes(lowerCaseSearchTerm);
-    });
-
-    renderRoutesTable(filteredRoutes);
-};
-
-const renderRoutesTable = (routes) => {
-    routeTableBody.innerHTML = ''; 
-
-    if (routes.length === 0) {
-        routeTableBody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-secondary); padding: 20px;">Nenhuma rota encontrada com os filtros atuais.</td></tr>';
-        return;
-    }
-
-    routes.forEach(route => {
-        const { _id, name, route_path, target_url, check_port, is_active, is_healthy } = route; 
-
-        let statusClass = 'gray';
-        let statusText = 'Inativa';
-
-        if (is_active) {
-            if (is_healthy) { 
-                statusClass = 'green';
-                statusText = 'Online (Rodando)';
-            } else {
-                statusClass = 'red';
-                statusText = 'Offline (Cadastrada)';
+            if (!response.ok) {
+                throw new Error(result.message || result.error || 'Erro desconhecido');
             }
-        }
-        
-        // NOVO: Torna o caminho clicável
-        const fullRouteUrl = `${BASE_GATEWAY_URL}${route_path.startsWith('/') ? route_path.substring(1) : route_path}`;
-        const routePathDisplay = route_path 
-            ? `<a href="${fullRouteUrl}" target="_blank" class="route-link">${BASE_GATEWAY_URL}<b>${route_path}</b></a>`
-            : 'N/A';
             
-        // NOVO: Mostra o URL de destino na coluna da URL
-        const targetUrlDisplay = check_port == 0 ? `(EXT) ${target_url}` : target_url;
-
-        const row = routeTableBody.insertRow();
-        row.innerHTML = `
-            <td><span class="status-dot ${statusClass}"></span>${statusText}</td>
-            <td><strong>${name}</strong></td> 
-            <td>${routePathDisplay}</td>
-            <td>${targetUrlDisplay}</td>
-            <td>${check_port}</td>
-            <td>
-                <button class="action-btn edit-btn" data-id="${_id}">Editar</button>
-                <button class="action-btn delete-btn" data-id="${_id}">Excluir</button>
-            </td>
-        `;
-    });
+            return result;
+            
+        } catch (error) {
+            console.error('Erro na API:', error);
+            
+            if (error.message.includes('Failed to fetch')) {
+                return { error: true, message: 'Erro de conexão com o servidor.' };
+            }
+            
+            return { error: true, message: error.message };
+        }
+    }
 };
 
-const handleFormSubmit = async (e) => {
-    e.preventDefault();
+// ========================================
+// GERENCIAMENTO DE TEMA
+// ========================================
 
-    const id = document.getElementById('route-id').value;
-    const name = document.getElementById('route_name').value;
-    const checkPortElement = document.getElementById('check_port');
-    
-    let data = { name }; 
-    let result;
-
-    if (id) {
-        // MODO EDIÇÃO
-        data.route_path = document.getElementById('route_path').value;
-        data.target_url = document.getElementById('target_url').value;
-        data.check_port = parseInt(checkPortElement.value, 10);
-        data.is_active = true;
+const Theme = {
+    init() {
+        const savedTheme = localStorage.getItem('theme');
         
-        result = await makeApiCall(`${ADMIN_API}/${id}`, 'PUT', data, true);
+        if (savedTheme === 'dark') {
+            document.body.classList.add('dark-mode');
+            DOM.themeToggle.checked = true;
+        }
+        
+        DOM.themeToggle.addEventListener('change', () => this.toggle());
+    },
+    
+    toggle() {
+        if (DOM.themeToggle.checked) {
+            document.body.classList.add('dark-mode');
+            localStorage.setItem('theme', 'dark');
+        } else {
+            document.body.classList.remove('dark-mode');
+            localStorage.setItem('theme', 'light');
+        }
+    }
+};
 
-    } else {
-        // MODO CRIAÇÃO
+// ========================================
+// GERENCIAMENTO DE VIEWS
+// ========================================
 
-        if (!checkPortElement || checkPortElement.value === "") {
-            showModal('error', 'Atenção!', "Selecione uma porta ativa ou mude para o modo URL Externa e preencha os campos.");
+const ViewManager = {
+    show(viewName) {
+        Object.values(DOM.views).forEach(view => view.classList.add('hidden'));
+        DOM.views[viewName]?.classList.remove('hidden');
+        
+        if (viewName === 'dashboard') {
+            DOM.authControls.classList.remove('hidden');
+        } else {
+            DOM.authControls.classList.add('hidden');
+        }
+    }
+};
+
+// ========================================
+// MODAL
+// ========================================
+
+const Modal = {
+    show(type, title, message) {
+        DOM.modalTitle.textContent = title;
+        DOM.modalMessage.textContent = message;
+        
+        const iconClass = type === 'success' ? 'fas fa-check-circle' : 'fas fa-times-circle';
+        DOM.modalIcon.className = `modal-icon ${type}`;
+        DOM.modalIcon.innerHTML = `<i class="${iconClass}"></i>`;
+        
+        DOM.modal.classList.remove('hidden');
+        DOM.modal.classList.add('visible');
+    },
+    
+    hide() {
+        DOM.modal.classList.remove('visible');
+        DOM.modal.classList.add('hidden');
+    },
+    
+    init() {
+        DOM.modalClose.addEventListener('click', () => this.hide());
+    }
+};
+
+// ========================================
+// AUTENTICAÇÃO
+// ========================================
+
+const Auth = {
+    async checkInitialStatus() {
+        if (State.token) {
+            ViewManager.show('dashboard');
+            Dashboard.load();
             return;
         }
-
-        const checkPortValue = parseInt(checkPortElement.value, 10);
-
-        if (checkPortValue === 0) {
-             // MODO CRIAÇÃO EXTERNA
-             data.route_path = document.getElementById('route_path').value;
-             data.target_url = document.getElementById('target_url').value;
-             data.check_port = 0; // Marcar como 0
-             data.is_active = true; 
+        
+        if (await this.checkResetToken()) {
+            return;
+        }
+        
+        try {
+            const result = await API.call(`${CONFIG.AUTH_API}/first-access`);
+            
+            if (result.needsRegistration) {
+                ViewManager.show('firstAccess');
+            } else {
+                ViewManager.show('login');
+            }
+        } catch (error) {
+            Modal.show('error', 'Erro de Conexão', 'Não foi possível conectar ao servidor.');
+            ViewManager.show('login');
+        }
+    },
+    
+    async checkResetToken() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const token = urlParams.get('token');
+        
+        if (!token) return false;
+        
+        ViewManager.show('resetPassword');
+        DOM.resetToken.value = token;
+        
+        const result = await API.call(`${CONFIG.AUTH_API}/password-reset/validate/${token}`);
+        
+        if (result.error || !result.valid) {
+            Modal.show('error', 'Token Inválido', result.message || 'Token inválido ou expirado.');
+            window.history.pushState({}, document.title, window.location.pathname);
+            ViewManager.show('login');
         } else {
-            // MODO CRIAÇÃO DINÂMICA (Porta Local)
-            data.check_port = checkPortValue;
-        }
-
-        // Validação adicional para o modo externo
-        if (checkPortValue === 0 && (!data.route_path || !data.target_url)) {
-             showModal('error', 'Atenção!', "Caminho da Rota e URL Destino são obrigatórios para rotas externas.");
-             return;
+            DOM.resetInfo.innerHTML = `Redefina a senha para: <strong>${result.email}</strong>`;
         }
         
-        result = await makeApiCall(ADMIN_API, 'POST', data, true); 
-    }
-
-    if (!result.error) {
-        const routeName = result.route ? result.route.name : data.name;
-        showModal('success', 'Sucesso!', `Rota "${routeName}" salva e Gateway reiniciado.`);
-        
-        handleCancelEdit();
-        loadDashboardData();
-    } else {
-        showModal('error', 'Erro na Operação', result.message);
-    }
-};
-
-const handleEdit = (id) => {
-    const routeToEdit = routesCache.find(r => r._id === id); 
-    if (!routeToEdit) return;
-
-    renderRouteForm(routeToEdit);
-};
-
-const handleCancelEdit = () => {
-    renderRouteForm(null); 
-}
-
-const handleDelete = async (id) => {
-    if (!confirm("Tem certeza que deseja excluir esta rota? Isso a removerá do Gateway.")) return;
-
-    const result = await makeApiCall(`${ADMIN_API}/${id}`, 'DELETE', null, true); // Requer Autenticação
-
-    if (!result.error) {
-        showModal('success', 'Sucesso!', result.message);
-        loadDashboardData();
-    } else {
-        showModal('error', 'Erro ao Excluir', result.message);
-    }
-};
-
-
-// === INICIALIZAÇÃO E EVENT LISTENERS GERAIS ===
-
-// 1. Theme Toggle
-themeToggle.addEventListener('change', toggleTheme);
-
-// 2. Login/Logout
-document.getElementById('logout-button').addEventListener('click', logout);
-
-// 3. CRUD: Delegação de eventos para o formulário e tabela
-routeForm.addEventListener('submit', handleFormSubmit);
-
-routeTableBody.addEventListener('click', (e) => {
-    const target = e.target;
-    const id = target.dataset.id;
+        return true;
+    },
     
-    if (target.classList.contains('edit-btn')) {
-        handleEdit(id);
-    } else if (target.classList.contains('delete-btn')) {
-        handleDelete(id);
+    async registerFirst(formData) {
+        this.showMessage('firstAccess', 'Registrando...', false);
+        
+        const result = await API.call(`${CONFIG.AUTH_API}/register-first`, 'POST', formData);
+        
+        if (!result.error) {
+            this.showMessage('firstAccess', result.message, false);
+            setTimeout(() => {
+                ViewManager.show('login');
+                this.showMessage('login', 'Administrador registrado. Faça login.', false);
+            }, 2000);
+        } else {
+            this.showMessage('firstAccess', result.message, true);
+        }
+    },
+    
+    async login(credentials) {
+        this.showMessage('login', 'Entrando...', false);
+        
+        const result = await API.call(`${CONFIG.AUTH_API}/login`, 'POST', credentials);
+        
+        if (!result.error) {
+            State.setToken(result.token);
+            this.showMessage('login', '', false);
+            ViewManager.show('dashboard');
+            Dashboard.load();
+        } else {
+            this.showMessage('login', result.message || 'Erro de login.', true);
+        }
+    },
+    
+    logout() {
+        State.clearToken();
+        ViewManager.show('login');
+        DOM.forms.login.reset();
+    },
+    
+    async requestReset(email) {
+        this.showMessage('requestReset', 'Enviando link...', false);
+        
+        const result = await API.call(`${CONFIG.AUTH_API}/password-reset/request`, 'POST', { email });
+        
+        this.showMessage('requestReset', result.message, result.error);
+    },
+    
+    async resetPassword(data) {
+        this.showMessage('resetPassword', 'Redefinindo senha...', false);
+        
+        const result = await API.call(`${CONFIG.AUTH_API}/password-reset/reset`, 'POST', data);
+        
+        if (!result.error) {
+            this.showMessage('resetPassword', result.message, false);
+            Modal.show('success', 'Sucesso!', result.message + ' Redirecionando...');
+            
+            setTimeout(() => {
+                ViewManager.show('login');
+                window.history.pushState({}, document.title, window.location.pathname);
+            }, 3000);
+        } else {
+            this.showMessage('resetPassword', result.message, true);
+        }
+    },
+    
+    showMessage(type, message, isError) {
+        const element = DOM.messages[type];
+        element.textContent = message;
+        element.className = isError ? 'message error' : 'message success';
     }
-});
+};
 
-// 4. Busca em Tempo Real e Inicialização
+// ========================================
+// DASHBOARD
+// ========================================
+
+const Dashboard = {
+    async load() {
+        const routes = await this.fetchRoutes();
+        if (routes.error) return;
+        
+        State.setRoutes(routes);
+        
+        await this.loadAvailablePorts();
+        this.updateCards();
+        this.renderRoutesTable(State.routes);
+        RouteForm.render();
+        
+        if (DOM.routeSearch) {
+            DOM.routeSearch.value = '';
+        }
+    },
+    
+    async fetchRoutes() {
+        return API.call(CONFIG.ADMIN_API, 'GET', null, true);
+    },
+    
+    async loadAvailablePorts() {
+        const result = await API.call(CONFIG.DISCOVER_API, 'GET', null, true);
+        
+        if (result.error) {
+            console.error('Erro ao descobrir portas:', result.message);
+            State.setAvailablePorts([]);
+        } else {
+            State.setAvailablePorts(result);
+        }
+    },
+    
+    updateCards() {
+        const routes = State.routes;
+        
+        DOM.totalRoutesCard.textContent = routes.length;
+        DOM.usedPortsCard.textContent = routes.filter(r => r.is_healthy).length;
+        DOM.availablePortsCard.textContent = State.availablePorts.length;
+    },
+    
+    renderRoutesTable(routes) {
+        DOM.routesTableBody.innerHTML = '';
+        
+        if (routes.length === 0) {
+            DOM.routesTableBody.innerHTML = `
+                <tr>
+                    <td colspan="6" style="text-align: center; padding: 2rem; color: var(--color-text-secondary);">
+                        Nenhuma rota encontrada.
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+        
+        routes.forEach(route => {
+            const row = this.createRouteRow(route);
+            DOM.routesTableBody.appendChild(row);
+        });
+    },
+    
+    createRouteRow(route) {
+        const { _id, name, route_path, target_url, check_port, is_active, is_healthy } = route;
+        
+        let statusClass = 'inactive';
+        let statusText = 'Inativa';
+        
+        if (is_active) {
+            if (is_healthy) {
+                statusClass = 'online';
+                statusText = 'Online';
+            } else {
+                statusClass = 'offline';
+                statusText = 'Offline';
+            }
+        }
+        
+        const fullUrl = `${CONFIG.BASE_GATEWAY_URL}${route_path.startsWith('/') ? route_path.substring(1) : route_path}`;
+        const pathDisplay = route_path 
+            ? `<a href="${fullUrl}" target="_blank" class="route-link">${CONFIG.BASE_GATEWAY_URL}<strong>${route_path}</strong></a>`
+            : 'N/A';
+        
+        const targetDisplay = check_port == 0 ? `<span style="color: var(--color-warning);">(EXT)</span> ${target_url}` : target_url;
+        
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>
+                <span class="status-badge status-${statusClass}">
+                    <span class="status-dot"></span>
+                    ${statusText}
+                </span>
+            </td>
+            <td><strong>${name}</strong></td>
+            <td>${pathDisplay}</td>
+            <td>${targetDisplay}</td>
+            <td>${check_port}</td>
+            <td>
+                <button class="btn btn-warning btn-edit" data-id="${_id}">
+                    <i class="fas fa-edit"></i> Editar
+                </button>
+                <button class="btn btn-danger btn-delete" data-id="${_id}">
+                    <i class="fas fa-trash"></i> Excluir
+                </button>
+            </td>
+        `;
+        
+        return row;
+    },
+    
+    filterRoutes(searchTerm) {
+        const term = searchTerm.toLowerCase().trim();
+        
+        if (!term) {
+            this.renderRoutesTable(State.routes);
+            return;
+        }
+        
+        const filtered = State.routes.filter(route => {
+            return (route.name || '').toLowerCase().includes(term) ||
+                   (route.route_path || '').toLowerCase().includes(term) ||
+                   (route.target_url || '').toLowerCase().includes(term) ||
+                   (route.check_port || '').toString().includes(term);
+        });
+        
+        this.renderRoutesTable(filtered);
+    }
+};
+
+// ========================================
+// FORMULÁRIO DE ROTAS
+// ========================================
+
+const RouteForm = {
+    currentEdit: null,
+    
+    render(routeToEdit = null) {
+        this.currentEdit = routeToEdit;
+        DOM.forms.route.innerHTML = '';
+        
+        if (routeToEdit) {
+            this.renderEditMode(routeToEdit);
+        } else {
+            this.renderCreateMode();
+        }
+    },
+    
+    renderEditMode(route) {
+        DOM.forms.route.innerHTML = `
+            <input type="hidden" id="route-id" value="${route._id}">
+            <input type="text" id="route-name" placeholder="Nome da Rota" value="${route.name}" required>
+            <input type="text" id="route-path" placeholder="Caminho (ex: /api/service)" value="${route.route_path}" required>
+            <input type="url" id="target-url" placeholder="URL Destino" value="${route.target_url}" required>
+            <input type="number" id="check-port" placeholder="Porta Check" value="${route.check_port}" required>
+            <div class="form-actions">
+                <button type="button" class="btn btn-secondary" id="cancel-edit">
+                    <i class="fas fa-times"></i> Cancelar
+                </button>
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-save"></i> Salvar Alterações
+                </button>
+            </div>
+        `;
+        
+        document.getElementById('cancel-edit').addEventListener('click', () => this.render());
+    },
+    
+    renderCreateMode() {
+        const isExternal = DOM.modeToggle ? DOM.modeToggle.checked : false;
+        
+        DOM.forms.route.innerHTML = `
+            <input type="text" id="route-name" placeholder="Nome (ex: Service Produtos)" required>
+        `;
+        
+        if (isExternal) {
+            DOM.forms.route.innerHTML += `
+                <input type="text" id="route-path" placeholder="Caminho (ex: /api/externa)" required>
+                <input type="url" id="target-url" placeholder="URL Completa (ex: https://api.terceiros.com)" required>
+                <input type="hidden" id="check-port" value="0">
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-plus"></i> Adicionar Rota Externa
+                </button>
+            `;
+        } else if (State.availablePorts.length > 0) {
+            this.renderPortSelector();
+        } else {
+            DOM.forms.route.innerHTML += `
+                <p class="message error">Nenhum serviço ativo encontrado. Inicie um microserviço ou mude para modo externo.</p>
+            `;
+        }
+    },
+    
+    renderPortSelector() {
+        DOM.forms.route.innerHTML += `
+            <input type="hidden" id="check-port">
+            <div class="custom-select-wrapper">
+                <div class="custom-select-trigger">
+                    <span id="port-display">Selecione um serviço ativo...</span>
+                    <i class="fas fa-chevron-down"></i>
+                </div>
+                <div class="custom-options">
+                    ${State.availablePorts.map(port => `
+                        <div class="custom-option" data-port="${port}">
+                            <span class="port-label">Porta ${port}</span>
+                            <span class="port-info">Serviço Rodando</span>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-plus"></i> Adicionar Rota Dinâmica
+            </button>
+        `;
+        
+        this.setupPortSelector();
+    },
+    
+    setupPortSelector() {
+        const trigger = DOM.forms.route.querySelector('.custom-select-trigger');
+        const options = DOM.forms.route.querySelector('.custom-options');
+        const portInput = document.getElementById('check-port');
+        const display = document.getElementById('port-display');
+        
+        trigger.addEventListener('click', () => {
+            const isOpen = options.style.display === 'block';
+            options.style.display = isOpen ? 'none' : 'block';
+            trigger.classList.toggle('active', !isOpen);
+        });
+        
+        DOM.forms.route.querySelectorAll('.custom-option').forEach(option => {
+            option.addEventListener('click', () => {
+                const port = option.dataset.port;
+                portInput.value = port;
+                display.textContent = `Porta ${port} (Selecionada)`;
+                
+                DOM.forms.route.querySelectorAll('.custom-option').forEach(o => 
+                    o.classList.remove('selected')
+                );
+                option.classList.add('selected');
+                
+                options.style.display = 'none';
+                trigger.classList.remove('active');
+            });
+        });
+        
+        document.addEventListener('click', (e) => {
+            if (trigger && !trigger.contains(e.target) && !options.contains(e.target)) {
+                options.style.display = 'none';
+                trigger.classList.remove('active');
+            }
+        });
+    },
+    
+    async submit(e) {
+        e.preventDefault();
+        
+        const id = document.getElementById('route-id')?.value;
+        const name = document.getElementById('route-name').value;
+        const checkPort = document.getElementById('check-port');
+        
+        let data = { name };
+        let result;
+        
+        if (id) {
+            // Modo Edição
+            data.route_path = document.getElementById('route-path').value;
+            data.target_url = document.getElementById('target-url').value;
+            data.check_port = parseInt(checkPort.value, 10);
+            data.is_active = true;
+            
+            result = await API.call(`${CONFIG.ADMIN_API}/${id}`, 'PUT', data, true);
+        } else {
+            // Modo Criação
+            if (!checkPort || checkPort.value === '') {
+                Modal.show('error', 'Atenção!', 'Selecione uma porta ou preencha todos os campos.');
+                return;
+            }
+            
+            const portValue = parseInt(checkPort.value, 10);
+            
+            if (portValue === 0) {
+                data.route_path = document.getElementById('route-path').value;
+                data.target_url = document.getElementById('target-url').value;
+                data.check_port = 0;
+                data.is_active = true;
+                
+                if (!data.route_path || !data.target_url) {
+                    Modal.show('error', 'Atenção!', 'Preencha todos os campos para rotas externas.');
+                    return;
+                }
+            } else {
+                data.check_port = portValue;
+            }
+            
+            result = await API.call(CONFIG.ADMIN_API, 'POST', data, true);
+        }
+        
+        if (!result.error) {
+            const routeName = result.route ? result.route.name : data.name;
+            Modal.show('success', 'Sucesso!', `Rota "${routeName}" salva com sucesso.`);
+            
+            this.render();
+            Dashboard.load();
+        } else {
+            Modal.show('error', 'Erro', result.message);
+        }
+    }
+};
+
+// ========================================
+// GERENCIAMENTO DE ROTAS (CRUD)
+// ========================================
+
+const RouteManager = {
+    async edit(id) {
+        const route = State.routes.find(r => r._id === id);
+        if (!route) return;
+        
+        RouteForm.render(route);
+        
+        // Scroll suave até o formulário
+        DOM.forms.route.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    },
+    
+    async delete(id) {
+        const route = State.routes.find(r => r._id === id);
+        if (!route) return;
+        
+        if (!confirm(`Tem certeza que deseja excluir a rota "${route.name}"?`)) {
+            return;
+        }
+        
+        const result = await API.call(`${CONFIG.ADMIN_API}/${id}`, 'DELETE', null, true);
+        
+        if (!result.error) {
+            Modal.show('success', 'Sucesso!', result.message);
+            Dashboard.load();
+        } else {
+            Modal.show('error', 'Erro', result.message);
+        }
+    }
+};
+
+// ========================================
+// EVENT LISTENERS
+// ========================================
+
+const EventListeners = {
+    init() {
+        // Auth Events
+        DOM.forms.login.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            Auth.login({ username, password });
+        });
+        
+        DOM.forms.firstAccess.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const formData = {
+                name: document.getElementById('fa-name').value,
+                email: document.getElementById('fa-email').value,
+                username: document.getElementById('fa-username').value,
+                password: document.getElementById('fa-password').value
+            };
+            Auth.registerFirst(formData);
+        });
+        
+        DOM.forms.requestReset.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const email = document.getElementById('reset-email').value;
+            Auth.requestReset(email);
+        });
+        
+        DOM.forms.resetPassword.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const token = DOM.resetToken.value;
+            const newPassword = document.getElementById('new-password').value;
+            const confirmPassword = document.getElementById('confirm-password').value;
+            
+            if (newPassword !== confirmPassword) {
+                Auth.showMessage('resetPassword', 'As senhas não coincidem.', true);
+                return;
+            }
+            
+            if (newPassword.length < 6) {
+                Auth.showMessage('resetPassword', 'A senha deve ter no mínimo 6 caracteres.', true);
+                return;
+            }
+            
+            Auth.resetPassword({ token, newPassword });
+        });
+        
+        // Navigation Events
+        DOM.forgotPasswordLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            ViewManager.show('requestReset');
+            Auth.showMessage('requestReset', '', false);
+        });
+        
+        DOM.backToLoginLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            ViewManager.show('login');
+            Auth.showMessage('login', '', false);
+        });
+        
+        DOM.logoutBtn.addEventListener('click', () => Auth.logout());
+        
+        // Route Form Events
+        DOM.forms.route.addEventListener('submit', (e) => RouteForm.submit(e));
+        
+        // Mode Toggle
+        if (DOM.modeToggle) {
+            DOM.modeToggle.addEventListener('change', () => RouteForm.render());
+        }
+        
+        // Table Events (Event Delegation)
+        DOM.routesTableBody.addEventListener('click', (e) => {
+            const target = e.target.closest('button');
+            if (!target) return;
+            
+            const id = target.dataset.id;
+            
+            if (target.classList.contains('btn-edit')) {
+                RouteManager.edit(id);
+            } else if (target.classList.contains('btn-delete')) {
+                RouteManager.delete(id);
+            }
+        });
+        
+        // Search Events
+        if (DOM.routeSearch) {
+            DOM.routeSearch.addEventListener('input', (e) => {
+                Dashboard.filterRoutes(e.target.value);
+            });
+        }
+    }
+};
+
+// ========================================
+// INICIALIZAÇÃO DA APLICAÇÃO
+// ========================================
+
+const App = {
+    async init() {
+        console.log('🚀 Iniciando 10KK Gateway Manager...');
+        
+        // Inicializa módulos
+        Theme.init();
+        Modal.init();
+        EventListeners.init();
+        
+        // Verifica autenticação
+        await Auth.checkInitialStatus();
+        
+        console.log('✅ Aplicação inicializada com sucesso!');
+    }
+};
+
+// ========================================
+// INICIALIZAÇÃO QUANDO O DOM ESTIVER PRONTO
+// ========================================
+
 document.addEventListener('DOMContentLoaded', () => {
-    initializeTheme(); 
-    checkAuth(); // Inicia a verificação de status do sistema
-    
-    // NOVO: Listener para o Toggle Mode
-    if (modeToggle) {
-        modeToggle.addEventListener('change', () => {
-            renderRouteForm(); // Redesenha o formulário ao mudar o modo
-        });
-    }
-    
-    const searchInput = document.getElementById('route-search');
-    if (searchInput) {
-        searchInput.addEventListener('input', (e) => {
-            filterRoutes(e.target.value);
-        });
-    }
+    App.init();
 });
