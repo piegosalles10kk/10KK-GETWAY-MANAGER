@@ -4,7 +4,8 @@ services:
   # --- 1. API GATEWAY MANAGER (Seu Serviço Principal) ---
   gateway:
     build: .
-    container_name: api-gateway-manager-on
+    container_name: api-gateway-manager
+    # Mapeamento: Host 8000 (Seu VPS) -> Container 8000 (Seu app.js)
     ports:
       - "8000:8000"
     restart: always
@@ -24,7 +25,8 @@ services:
     image: mongo:4.4
     container_name: mongodb
     ports:
-      - "27018:27018"
+      - "27017:27017"
+    # Mapeia um volume para persistir os dados do banco
     volumes:
       - mongo-data:/data/db
 
@@ -40,4 +42,3 @@ services:
 
 volumes:
   mongo-data:
-  redis-data:  # ✨ NOVO

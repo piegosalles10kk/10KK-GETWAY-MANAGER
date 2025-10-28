@@ -1,0 +1,17 @@
+# Variáveis de Ambiente para a API Gateway
+
+# --- Configurações do Servidor ---
+# Porta em que o Express irá rodar.
+PORT=8000
+
+# --- Configurações do MongoDB (Mongoose) ---
+# URI de conexão para sua instância local do MongoDB.
+# Altere 'api_gateway_db' se o nome do seu banco for diferente.
+# Se você tiver autenticação (usuário/senha), ajuste esta linha:
+# MONGO_URI="mongodb://user:pass@localhost:27017/api_gateway_db"
+MONGO_URI="mongodb://127.0.0.1:27017/api_gateway_db" 
+
+# --- Configurações do PortScanner ---
+# Host que o portscanner irá verificar. 
+# Para checar seus serviços de backend LOCALMENTE, mantenha '127.0.0.1'.
+PORT_CHECK_HOST=127.0.0.1
