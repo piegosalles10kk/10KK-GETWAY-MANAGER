@@ -750,28 +750,6 @@ pm2 logs api-gateway
 
 ---
 
-## 📝 Roadmap
-
-### v1.1 (Próxima Release)
-- [ ] Implementar JWT real
-- [ ] Middleware de autenticação completo
-- [ ] Logs estruturados (Winston)
-- [ ] Testes unitários básicos
-
-### v1.2
-- [ ] Dashboard de métricas (Grafana)
-- [ ] Alertas via email/SMS
-- [ ] Load balancing entre serviços
-- [ ] API versioning
-
-### v2.0
-- [ ] Multi-tenancy
-- [ ] API Marketplace
-- [ ] Billing/Monetização
-- [ ] Auto-scaling de serviços
-
----
-
 ## ❓ FAQ
 
 **P: Como adicionar um novo microsserviço?**
