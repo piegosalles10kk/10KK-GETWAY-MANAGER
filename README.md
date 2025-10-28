@@ -123,8 +123,8 @@ Cliente                Gateway               Microsserviço
 
 ```bash
 # 1. Clone o repositório
-git clone https://github.com/seu-usuario/api-gateway-manager.git
-cd api-gateway-manager
+git clone https://github.com/piegosalles10kk/10KK-GETWAY-MANAGER
+cd 10KK-GETWAY-MANAGER
 
 # 2. Configure as variáveis de ambiente
 cp .env.example .env
@@ -140,8 +140,8 @@ docker-compose up -d
 
 ```bash
 # 1. Clone o repositório
-git clone https://github.com/seu-usuario/api-gateway-manager.git
-cd api-gateway-manager
+git clone https://github.com/piegosalles10kk/10KK-GETWAY-MANAGER
+cd 10KK-GETWAY-MANAGER
 
 # 2. Instale as dependências
 npm install
