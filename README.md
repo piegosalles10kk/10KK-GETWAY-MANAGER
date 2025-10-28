@@ -793,17 +793,7 @@ Este projeto está sob a licença ISC. Veja o arquivo [LICENSE](LICENSE) para ma
 
 ---
 
-## 🙏 Agradecimentos
-
-- [Express](https://expressjs.com/) - Framework web
-- [MongoDB](https://www.mongodb.com/) - Banco de dados
-- [Redis](https://redis.io/) - Cache e fila
-- [http-proxy-middleware](https://github.com/chimurai/http-proxy-middleware) - Proxy reverso
-- [Docker](https://www.docker.com/) - Containerização
-
----
-
 
 **[⬆ Voltar ao topo](#-api-gateway-manager)**
 
-Feito com ❤️ por Piego
+Feito por Piego
