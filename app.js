@@ -1,5 +1,3 @@
-// app.js
-
 // --- 1. Dependências e Configuração de Ambiente ---
 require('dotenv').config(); 
 const express = require('express');
@@ -10,6 +8,9 @@ const { dynamicRouter, setupGatewayRoutes, notFoundFallback } = require('./src/c
 const { createTestUser } = require('./src/controllers/auth.controller');
 const authRouter = require('./src/routes/auth.routes');         
 const routeAdminRouter = require('./src/routes/admin.routes'); 
+
+// ✨ NOVO: Importa o Request Manager
+const { requestManager, healthCheck } = require('./src/middleware/requestManager');
 
 // --- 2. Variáveis de Configuração ---
 const PORT = process.env.PORT || 8000;
@@ -23,6 +24,17 @@ app.use(express.static('public'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Aplica o Request Manager GLOBALMENTE
+app.use(requestManager({
+    RATE_LIMIT_WINDOW: 60 * 1000,        // Janela de tempo (1 minuto)
+    RATE_LIMIT_MAX_REQUESTS: 100,        // Máximo de requests na janela
+    MAX_CONCURRENT_REQUESTS: 50,         // Máximo por usuário/IP
+    GLOBAL_MAX_CONCURRENT: 1000,         // Máximo global
+    QUEUE_TIMEOUT: 30000,                // Timeout da fila (30s)
+    MAX_QUEUE_SIZE: 200,                 // Tamanho máximo da fila
+    FAILURE_THRESHOLD: 5,                // Falhas para abrir circuit breaker
+    CIRCUIT_TIMEOUT: 60000,              // Tempo do circuit breaker (1 min)
+}));
 
 // --- 4. Conexão com o MongoDB ---
 
@@ -39,6 +51,9 @@ const connectDB = async () => {
 
 
 // --- 5. Roteamento da API ---
+
+// Rota de Health Check
+app.get('/health', healthCheck);
 
 // Rotas de Autenticação e Usuários (Auth Router cobre login e CRUD de users)
 app.use('/api', authRouter); 
@@ -69,7 +84,8 @@ const startServer = async () => {
     app.listen(PORT, () => {
         console.log(`\n======================================================`);
         console.log(`🔥 API Gateway rodando em http://localhost:${PORT}`);
-        console.log(`Acesse o Dashboard: http://localhost:${PORT}/index.html`);
+        console.log(`📊 Health Check: http://localhost:${PORT}/health`);
+        console.log(`🎨 Acesse o Dashboard: http://localhost:${PORT}/index.html`);
         
         // Loga a senha aleatória para o primeiro uso
         if (testUser) {

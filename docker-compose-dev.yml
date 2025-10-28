@@ -5,20 +5,19 @@ services:
   gateway:
     build: .
     container_name: api-gateway-manager
-    # Mapeamento: Host 8000 -> Container 8000
     ports:
       - "8000:8000"
     restart: always
     environment:
-      # Conexão com MongoDB no Docker
       MONGO_URI: mongodb://mongo-db:27017/api-gateway-db
+      REDIS_URL: redis://redis:6379  
       JWT_SECRET: PieGoCAmiSa10
       ADMIN_USERNAME: admin
       ADMIN_PASSWORD: password123
-      # CORREÇÃO: Variável que seu app.js usa, mapeada para o Host
       PORT_CHECK_HOST: host.docker.internal 
     depends_on:
       - mongo-db
+      - redis  
       
   # --- 2. MONGODB DATABASE ---
   mongo-db:
@@ -29,6 +28,16 @@ services:
     volumes:
       - mongo-data:/data/db
 
-# Definição do volume para persistência de dados
+  # --- 3. REDIS CACHE ---
+  redis:
+    image: redis:7-alpine
+    container_name: redis-cache
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+
 volumes:
   mongo-data:
+  redis-data:  
